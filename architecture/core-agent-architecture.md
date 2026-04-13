@@ -91,14 +91,14 @@ Purpose:
 
 The exit agent should not directly mutate portfolio state.
 
-### 4.4 Wallet / Command Agent
+### 4.4 Wallet, Portfolio, and History Command Agents
 Purpose:
 
-- handle wallet-oriented command flows that depend on OKX skill instructions,
-- interpret `/start`, `/status`, `/portfolio`, and `/history` requests,
-- use `okx-agentic-wallet` skill guidance for login, verify, status, addresses, balances, and history lookups.
+- `WalletAgent` handles `/start` and `/status` with `okx-agentic-wallet`,
+- `PositionTrackerAgent` handles `/portfolio` with `okx-dex-market`,
+- `HistoryAgent` handles `/history` with `okx-dex-market`.
 
-This agent should not directly execute unrestricted trade side effects.
+These agents should not directly execute unrestricted trade side effects.
 
 ### 4.5 Swap Execution Agent
 Purpose:
@@ -165,13 +165,13 @@ Recommended node sequence:
 
 Keep command flows simple and mostly deterministic:
 
-- `/start` -> wallet onboarding graph with wallet / command agent step
+- `/start` -> `WalletService` wallet graph with `WalletAgent`
 - `/trade-style` -> strategy profile command graph
 - `/follow` -> source registration graph
 - `/stop` -> source pause graph
-- `/portfolio` -> portfolio summary graph with wallet / command agent enrichment
-- `/history` -> wallet / command agent + local history graph
-- `/status` -> readiness graph with wallet / command agent check
+- `/portfolio` -> portfolio summary graph with `PositionTrackerAgent`
+- `/history` -> `HistoryAgent` + local history graph
+- `/status` -> `WalletService` readiness graph with `WalletAgent`
 
 ## 7. Where the Model Should Be Called
 
@@ -180,7 +180,9 @@ The model should only be called at ambiguity-heavy steps:
 - Telegram message classification and extraction
 - decision synthesis
 - exit decision synthesis
-- wallet / balance / history / status command handling through OKX skills
+- wallet login, verification, and status handling through `WalletAgent` + `okx-agentic-wallet`
+- portfolio / token PnL tracking through `PositionTrackerAgent` + `okx-dex-market`
+- DEX history retrieval through `HistoryAgent` + `okx-dex-market`
 - optional user-facing summary generation
 
 The model should not be the primary decision maker for:
@@ -248,7 +250,7 @@ Expose:
 
 Do not expose direct write tools.
 
-## 8.4 Tools Exposed to Wallet / Command Agent
+## 8.4 Tools Exposed to WalletAgent, PositionTrackerAgent, and HistoryAgent
 
 Expose:
 
@@ -258,11 +260,9 @@ Expose:
 
 Primary skill:
 
-- `okx-agentic-wallet`
-
-Optional supporting skills:
-
-- `okx-dex-market` for portfolio-oriented market context
+- `WalletAgent`: `okx-agentic-wallet`
+- `PositionTrackerAgent`: `okx-dex-market`
+- `HistoryAgent`: `okx-dex-market`
 
 Do not expose unrestricted trade execution tools in generic command flows.
 

@@ -28,11 +28,11 @@ The practical rule for this codebase is:
 | `ParsingAgent` | Parse raw message into structured signal clues | Distinct language-understanding step, narrow output schema, dedicated OKX token clue lookup | Low | Keep separate |
 | `EnrichmentAgent` | Gather entry wallet/market/risk context | Uses OKX skills and read-only commands to build entry decision inputs | Low | Keep separate |
 | `DecisionAgent` | Convert enriched entry context into buy/skip/block decision | Pure reasoning step with no OKX reads; safety boundary is clear | Low | Keep separate |
-| `ExitEnrichmentAgent` | Refresh exit market context before reevaluation | Exit context is different from entry context; narrower market-only role | Medium | Keep separate for now |
+| `PositionTrackerAgent` | Gather per-token and wallet-level market / PnL context for exit and `/portfolio` | Distinct OKX market-tracking domain, reusable across exit and `/portfolio`, and supports peak/trailing refresh from market kline | Low | Keep separate |
+| `HistoryAgent` | Gather wallet DEX history for `/history` | Distinct historical transaction retrieval domain using OKX market history tools | Low | Keep separate |
 | `ExitAgent` | Convert exit context into hold/hard/trailing decision | Distinct reasoning contract and output schema | Low | Keep separate |
 | `SwapExecutionAgent` | Turn approved intent into skill-guided swap execution | Separate mutating safety boundary; skill-guided execution is distinct from decisioning | Low | Keep separate |
-| `WalletCommandAgent` | Read-only wallet/status/portfolio/history responses | Wallet domain agent, but tool surface overlaps onboarding | Medium | Consider merge later with wallet domain agent |
-| `WalletOnboardingAgent` | Email/OTP wallet onboarding | Multi-turn auth flow and mutating wallet actions justify a separate boundary today | Medium | Keep separate for now |
+| `WalletAgent` | Handle wallet login, verification, and read-only wallet status | Single wallet-auth domain boundary using `okx-agentic-wallet` for login, verify, and readiness checks | Low | Keep separate |
 | `TradeStyleOverrideAgent` | Parse free-form settings overrides into structured patch | Very small bounded parser; no external actions | Medium | Keep, but could be absorbed into a generic settings parser later |
 | `FollowProfilingAgent` | Analyze historical channel calls and propose conviction | Distinct retrospective analysis domain with different prompt/output | Low | Keep separate |
 
@@ -73,12 +73,7 @@ Reasons:
 - it maps cleanly to workflow milestones
 - it isolates mutating execution from reasoning
 
-The main domain to revisit later is the **wallet domain**:
-
-- `WalletCommandAgent`
-- `WalletOnboardingAgent`
-
-These may eventually become a single wallet domain agent plus stateful workflow routing around it.
+The wallet domain has now been simplified around `WalletService` orchestration plus a single `WalletAgent`.
 
 ## Refactor Trigger
 

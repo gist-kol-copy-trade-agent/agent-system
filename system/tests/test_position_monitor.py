@@ -1,4 +1,5 @@
 from app.agents.exit import ExitAgent
+from app.agents.position_tracker import PositionTrackerAgent
 from app.persistence.repositories import InMemoryPositionRepository, InMemoryWorkflowRunRepository, PositionRecord
 from app.services.exit_flow import ExitGraphService
 from app.services.position_monitor import PositionMonitorService
@@ -27,6 +28,35 @@ class FakeExitBackend:
         }
 
 
+class FakePositionTrackerBackend:
+    def track_position(self, *, position_snapshot, strategy_profile):
+        return {
+            "position_tracking_snapshot": {
+                "symbol": position_snapshot["symbol"],
+                "chain": position_snapshot["chain"],
+                "current_price_usd": 105.0,
+                "unrealized_pnl_pct": 5.0,
+                "realized_pnl_pct": None,
+                "position_value_usd": 105.0,
+                "cost_basis_usd": position_snapshot["entry_amount_usd"],
+                "liquidity_usd": 100000.0,
+                "volume_24h_usd": 200000.0,
+                "quote_available": True,
+                "quote_price_impact_pct": 0.4,
+                "kline_window": [{"close": 100.0}, {"close": 105.0}],
+            }
+        }
+
+    def track_portfolio(self, *, user_id, bot_positions, strategy_profile=None):
+        return {
+            "portfolio_tracking_snapshot": {
+                "wallet_recent_pnl": [],
+                "token_pnl_rows": [],
+                "tracked_bot_positions": [],
+            }
+        }
+
+
 def test_position_monitor_runs_one_cycle() -> None:
     position_repo = InMemoryPositionRepository()
     workflow_repo = InMemoryWorkflowRunRepository()
@@ -50,7 +80,11 @@ def test_position_monitor_runs_one_cycle() -> None:
         queue_service=ExitWorkflowQueueService(workflow_repo),
         runtime=ExitWorkflowRuntime(
             workflow_repo,
-            ExitGraphService(strategy_profiles=strategy_service, exit_agent=ExitAgent(backend=FakeExitBackend())),
+            ExitGraphService(
+                strategy_profiles=strategy_service,
+                exit_agent=ExitAgent(backend=FakeExitBackend()),
+                position_tracker_agent=PositionTrackerAgent(backend=FakePositionTrackerBackend()),
+            ),
         ),
     )
     result = monitor.run_cycle(cycle_id="cycle-1")

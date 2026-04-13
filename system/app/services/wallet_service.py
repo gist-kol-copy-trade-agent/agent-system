@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.agents.wallet_onboarding import WalletOnboardingAgent
+from app.agents.wallet_agent import WalletAgent
 from app.persistence.repositories import WalletSessionRecord, WalletSessionRepository, utc_now_iso
 from app.schemas.commands import CommandResponse
 
@@ -13,11 +13,11 @@ OTP_RE = re.compile(r"^\d{4,8}$")
 
 
 @dataclass
-class WalletOnboardingService:
-    agent: WalletOnboardingAgent
+class WalletService:
+    agent: WalletAgent
     repository: WalletSessionRepository
 
-    def handle(self, *, user_id: str, chat_id: str, raw_text: str) -> CommandResponse:
+    def handle(self, *, user_id: str, chat_id: str, raw_text: str, command: str = "start") -> CommandResponse:
         session = self.repository.get(user_id)
         phase = self._resolve_phase(session, raw_text)
         locale = self._infer_locale(raw_text)
@@ -28,7 +28,7 @@ class WalletOnboardingService:
             current=session,
             result=result.model_dump(),
         )
-        return CommandResponse(ok=True, command="start", message=result.message, payload={**result.payload, "phase": updated.onboarding_phase})
+        return CommandResponse(ok=True, command=command, message=result.message, payload={**result.payload, "phase": updated.onboarding_phase})
 
     def has_pending_session(self, *, user_id: str) -> bool:
         session = self.repository.get(user_id)
@@ -36,6 +36,8 @@ class WalletOnboardingService:
 
     @staticmethod
     def _resolve_phase(session: WalletSessionRecord | None, raw_text: str) -> str:
+        if raw_text.strip() == "/status":
+            return "status"
         if raw_text.strip() == "/start":
             return "start"
         if session and session.onboarding_phase in {"awaiting_email", "awaiting_otp"}:
@@ -54,7 +56,9 @@ class WalletOnboardingService:
         logged_in = bool(payload.get("logged_in", current.logged_in if current else False))
         policy = dict((current.policy if current else {}) or {})
         phase = result.get("phase")
-        if logged_in:
+        if phase == "status":
+            phase = "status"
+        elif logged_in:
             phase = "ready"
         record = WalletSessionRecord(
             user_id=user_id,
@@ -82,7 +86,7 @@ class WalletOnboardingService:
         return "en-US"
 
 
-class DefaultWalletOnboardingBackend:
+class DefaultWalletBackend:
     def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str):
         text = raw_text.strip()
         if phase == "start":

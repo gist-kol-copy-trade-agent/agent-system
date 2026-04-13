@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from app.agents.exit import ExitAgent
-from app.agents.exit_enrichment import ExitEnrichmentAgent
+from app.agents.position_tracker import PositionTrackerAgent
 from app.agents.swap_execution import CallableSwapExecutionBackend, SwapExecutionAgent
 from app.config.settings import get_settings
 from app.graphs.runtime import build_checkpointer, invoke_graph
@@ -22,7 +22,7 @@ from app.persistence.repositories import (
     utc_now_iso,
 )
 from app.policies.exit_policy import DefaultExitPolicyEngine
-from app.schemas.domain import ExitMarketSnapshot, ExitTASnapshot, PositionSnapshot, TrailingState
+from app.schemas.domain import ExitMarketSnapshot, ExitTASnapshot, PositionSnapshot, PositionTrackingSnapshot, TrailingState
 from app.schemas.strategy import UserStrategyProfile
 from app.services.onchainos_runner import OnchainOSCommandError, OnchainOSMutatingRunner
 from app.services.notifications import NotificationService
@@ -179,7 +179,7 @@ class ExitGraphService:
         *,
         strategy_profiles: StrategyProfileService,
         exit_agent: ExitAgent | None = None,
-        exit_enrichment_agent: ExitEnrichmentAgent | None = None,
+        position_tracker_agent: PositionTrackerAgent | None = None,
         swap_execution_agent: SwapExecutionAgent | None = None,
         policy_engine: DefaultExitPolicyEngine | None = None,
         position_repository: PositionRepository | None = None,
@@ -191,7 +191,7 @@ class ExitGraphService:
     ) -> None:
         self.strategy_profiles = strategy_profiles
         self.exit_agent = exit_agent or ExitAgent()
-        self.exit_enrichment_agent = exit_enrichment_agent or ExitEnrichmentAgent()
+        self.position_tracker_agent = position_tracker_agent or PositionTrackerAgent()
         self.policy_engine = policy_engine or DefaultExitPolicyEngine()
         self.position_repository = position_repository
         self.evaluation_repository = evaluation_repository or _NullPositionExitEvaluationRepository()
@@ -221,6 +221,7 @@ class ExitGraphService:
             "position_snapshot": None,
             "trailing_state": None,
             "exit_market_snapshot": None,
+            "position_tracking_snapshot": None,
             "exit_ta_snapshot": None,
             "strategy_profile": None,
             "exit_decision": None,
@@ -326,24 +327,46 @@ class ExitGraphService:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
         trailing_state: TrailingState = state["trailing_state"] or {}  # type: ignore[assignment]
         strategy_profile = state["strategy_profile"] or {}
-        enriched = self.exit_enrichment_agent.enrich(
+        tracked = self.position_tracker_agent.track_position(
             position_snapshot=position,
-            trailing_state=trailing_state,
             strategy_profile=strategy_profile,
         )
-        return {"exit_market_snapshot": ExitMarketSnapshot(**enriched["exit_market_snapshot"])}
+        position_tracking = PositionTrackingSnapshot(**tracked["position_tracking_snapshot"])
+        return {
+            "position_tracking_snapshot": position_tracking,
+            "exit_market_snapshot": ExitMarketSnapshot(
+                asset_lane=position["asset_lane"],
+                chain=position["chain"],
+                current_price_usd=position_tracking["current_price_usd"],
+                liquidity_usd=position_tracking["liquidity_usd"],
+                volume_24h_usd=position_tracking["volume_24h_usd"],
+                quote_available=position_tracking["quote_available"],
+                quote_price_impact_pct=position_tracking["quote_price_impact_pct"],
+                kline_window=position_tracking["kline_window"],
+            ),
+        }
 
     def _node_compute_exit_ta(self, state: ExitGraphState) -> dict[str, Any]:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
         trailing_state: TrailingState = state["trailing_state"] or {}  # type: ignore[assignment]
         strategy = state["strategy_profile"] or {}
         market: ExitMarketSnapshot = state["exit_market_snapshot"]  # type: ignore[assignment]
+        tracking: PositionTrackingSnapshot = state["position_tracking_snapshot"] or {}  # type: ignore[assignment]
 
         entry_price = position["entry_price_usd"]
         current_price = market["current_price_usd"]
-        peak_price = trailing_state.get("peak_price_usd") or current_price or entry_price
-        unrealized_pnl_pct = None
-        if entry_price and current_price:
+        kline_peak = self._extract_kline_peak(market.get("kline_window") or [])
+        peak_candidates = [
+            trailing_state.get("peak_price_usd"),
+            position.get("current_price_usd"),
+            kline_peak,
+            current_price,
+            entry_price,
+        ]
+        filtered_peak_candidates = [float(value) for value in peak_candidates if value is not None]
+        peak_price = max(filtered_peak_candidates) if filtered_peak_candidates else None
+        unrealized_pnl_pct = tracking.get("unrealized_pnl_pct")
+        if unrealized_pnl_pct is None and entry_price and current_price:
             unrealized_pnl_pct = ((current_price - entry_price) / entry_price) * 100
         drawdown_from_peak_pct = None
         if peak_price and current_price:
@@ -505,12 +528,17 @@ class ExitGraphService:
             trailing_state["armed"] = True
             trailing_state["activated_at"] = utc_now_iso()
             trailing_state["activation_price_usd"] = market.get("current_price_usd")
-            trailing_state["peak_price_usd"] = market.get("current_price_usd")
+            trailing_state["peak_price_usd"] = ta.get("peak_price_usd") or market.get("current_price_usd")
             trailing_state["trailing_drawdown_pct"] = trailing_state.get("trailing_drawdown_pct") or (
                 state["strategy_profile"] or {}
             ).get("trailing_drawdown_pct")
             trailing_state["last_action"] = "armed"
         elif gate.get("action") == "hold":
+            if ta.get("peak_price_usd") is not None:
+                trailing_state["peak_price_usd"] = max(
+                    trailing_state.get("peak_price_usd") or ta.get("peak_price_usd"),
+                    ta.get("peak_price_usd"),
+                )
             trailing_state["last_action"] = "hold"
 
         self.evaluation_repository.save(
@@ -681,6 +709,15 @@ class ExitGraphService:
                 message_text=summary,
             )
         return {"telegram_summary": summary}
+
+    @staticmethod
+    def _extract_kline_peak(kline_window: list[dict[str, Any]]) -> float | None:
+        closes: list[float] = []
+        for candle in kline_window:
+            close = candle.get("close")
+            if isinstance(close, (int, float)):
+                closes.append(float(close))
+        return max(closes) if closes else None
 
     def _progress_update(
         self,

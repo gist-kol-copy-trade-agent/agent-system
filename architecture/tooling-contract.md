@@ -116,23 +116,20 @@ Rules:
 
 ## 3.2 Decision Agent Tools
 
-### `run_onchainos_readonly`
-This is the main OKX-facing tool for the decision agent.
+The decision agent should not call OKX OnchainOS directly.
 
-Typical commands:
+It receives normalized snapshots that were already gathered by the enrichment agent:
 
-- `onchainos wallet status`
-- `onchainos wallet balance --chain <chain>`
-- `onchainos wallet addresses --chain <chain>`
-- `onchainos market price --address <address>`
-- `onchainos market kline --address <address>`
-- `onchainos token price-info --address <address>`
-- `onchainos security token-scan ...`
-- `onchainos token advanced-info --address <address>`
-- `onchainos swap quote ...`
-- `onchainos signal list`
+- parsed signal
+- resolved asset
+- wallet snapshot
+- market snapshot
+- risk snapshot
+- quote context when available
+- TA snapshot
+- strategy profile
 
-The relevant skill prompt must be loaded first so the model knows the exact command semantics and safety rules.
+This keeps the decision step focused on reasoning over complete inputs and prevents it from hiding data-collection side effects inside the buy / skip / block decision.
 
 ### `compute_ta_score`
 Pure application tool.
@@ -194,14 +191,14 @@ Returns:
 
 - exit signal breakdown
 
-## 3.4 Wallet / Command Agent Tools
+## 3.4 WalletAgent, PositionTrackerAgent, and HistoryAgent Tools
 
 ### `load_okx_skill`
-Primary wallet command skill:
+Primary `WalletAgent` skill:
 
 - `okx-agentic-wallet`
 
-Optional portfolio support skill:
+Primary `PositionTrackerAgent` and `HistoryAgent` skill:
 
 - `okx-dex-market`
 
@@ -213,7 +210,7 @@ Use for wallet-skill references such as:
 - `_shared/chain-support.md`
 
 ### `run_onchainos_readonly`
-This is the primary wallet data path for model-assisted command handling.
+This is the primary read path for model-assisted wallet, portfolio, and history command handling.
 
 Typical commands:
 
@@ -221,13 +218,12 @@ Typical commands:
 - `onchainos wallet balance`
 - `onchainos wallet balance --chain <chain>`
 - `onchainos wallet addresses --chain <chain>`
-- `onchainos wallet history`
-- `onchainos wallet history --tx-hash ...`
 - `onchainos market portfolio-supported-chains`
 - `onchainos market portfolio-dex-history ...`
 - `onchainos market portfolio-recent-pnl ...`
+- `onchainos market portfolio-token-pnl ...`
 
-Wallet and balance flows should not rely on app-defined business wrappers as the main model-facing interface.
+Wallet, portfolio, and history flows should not rely on app-defined business wrappers as the main model-facing interface.
 The LLM should reason from the loaded skill plus the generic read-only command tool.
 
 ## 3.5 Swap Execution Agent Tools

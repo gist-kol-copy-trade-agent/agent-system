@@ -19,7 +19,7 @@ Structure:
 ### Phase 2
 
 - [phase-2-integrations-and-commands.md](phase-2-integrations-and-commands.md)
-- Goal: implement Telegram command handling, wallet/command agent flows, scraper integration, and user strategy profile flows
+- Goal: implement Telegram command handling, `WalletAgent` / `WalletService` flows, portfolio and history agents, scraper integration, and user strategy profile flows
 
 ### Phase 3
 

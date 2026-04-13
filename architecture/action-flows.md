@@ -238,11 +238,17 @@ Persist:
 
 - outbound Telegram notification record
 
-## 3. Wallet / Balance Commands
+## 2. Wallet, Portfolio, and History Commands
 
-## 3.1 Goal
+## 2.1 Goal
 
 Handle wallet-oriented Telegram commands using OKX skill-guided model reasoning rather than deterministic business wrappers.
+
+The command domain is split by skill boundary:
+
+- `WalletAgent` handles `/start` and `/status` with `okx-agentic-wallet`.
+- `PositionTrackerAgent` handles `/portfolio` with `okx-dex-market`.
+- `HistoryAgent` handles `/history` with `okx-dex-market`.
 
 Covered commands:
 
@@ -251,16 +257,50 @@ Covered commands:
 - `/portfolio`
 - `/history`
 
-## 3.2 Flow
+## 2.2 Flow
 
 ### Step 1: Ingest Command
 Deterministic.
 
 Persist raw command event if needed.
 
-## 4. Follow Channel
+### Step 2: Route to Command Agent
+Deterministic.
 
-## 4.1 Goal
+Routing:
+
+- `/start` -> `WalletAgent`
+- `/status` -> `WalletAgent`
+- `/portfolio` -> `PositionTrackerAgent`
+- `/history` -> `HistoryAgent`
+
+### Step 3: Execute Skill-Guided Read Path
+Model call: yes
+
+Agent behavior:
+
+- `WalletAgent` loads `okx-agentic-wallet` and issues wallet status, login, verify, balance, and address commands as needed.
+- `PositionTrackerAgent` loads `okx-dex-market` and issues portfolio PnL and supporting market commands.
+- `HistoryAgent` loads `okx-dex-market` and issues wallet DEX history commands.
+
+Persist:
+
+- wallet readiness snapshot when relevant
+- portfolio / history command audit event when relevant
+
+### Step 4: Deterministic Post-Processing
+Deterministic.
+
+Rules:
+
+- normalize returned payloads for Telegram presentation
+- merge OKX read snapshots with local bot-managed positions and completed trades
+- store any durable wallet session metadata needed by the app
+- do not let the model mutate trading state directly
+
+## 3. Follow Channel
+
+## 3.1 Goal
 
 Analyze a Telegram source before enabling live follow.
 
@@ -272,7 +312,7 @@ The user should receive:
 
 Only after user confirmation should the bot register the channel with the scraper.
 
-## 4.2 Flow
+## 3.2 Flow
 
 ### Step 1: Validate Source Input
 Deterministic.
@@ -423,63 +463,9 @@ Output:
 - normalized source id
 - suggested conviction used during decision
 
-### Step 2: Interpret Wallet Intent
-Model call: yes
+## 4. Scheduled Exit Evaluation
 
-Agent:
-
-- `Wallet / Command Agent`
-
-Tools exposed:
-
-- `load_okx_skill`
-- `load_okx_skill_reference`
-- `run_onchainos_readonly`
-
-Required skill:
-
-- `okx-agentic-wallet`
-
-Optional supporting skill:
-
-- `okx-dex-market` for portfolio or PnL-related follow-up
-
-Expected output:
-
-- resolved wallet intent
-- requested command mode
-- any required parameters still missing
-
-### Step 3: Execute Skill-Guided Read Path
-Model call: yes
-
-Agent:
-
-- `Wallet / Command Agent`
-
-Behavior:
-
-- load `okx-agentic-wallet`
-- issue read-only `onchainos` calls for status, balance, addresses, or history
-- optionally use `okx-dex-market` for portfolio market/PnL context
-
-Persist:
-
-- wallet readiness snapshot when relevant
-- command response audit event
-
-### Step 4: Deterministic Post-Processing
-Deterministic.
-
-Rules:
-
-- normalize returned payloads for Telegram presentation
-- store any durable wallet session metadata needed by the app
-- do not let the model mutate trading state directly
-
-## 2. Scheduled Exit Evaluation
-
-## 2.1 Goal
+## 4.1 Goal
 
 Reevaluate an active position on a schedule and decide whether to:
 
@@ -488,7 +474,7 @@ Reevaluate an active position on a schedule and decide whether to:
 - fire a trailing exit,
 - hard exit now.
 
-## 2.2 Flow
+## 4.2 Flow
 
 ### Step 1: Scheduled Position Poll
 Deterministic.
@@ -598,28 +584,30 @@ Persist:
 - realized output
 - position closed state
 
-## 4. `/start`
+## 5. `/start`
 
-Mostly deterministic.
+Model-assisted through `WalletAgent`, with deterministic state persistence and response rendering.
 
 Flow:
 
-1. check wallet status
-2. initiate login if needed
-3. fetch balance
-4. fetch addresses
-5. persist readiness state
-6. respond to Telegram
+1. invoke `WalletAgent`
+2. load `okx-agentic-wallet`
+3. check wallet status
+4. initiate login if needed
+5. verify OTP if the user provided one
+6. fetch balance
+7. fetch addresses
+8. persist readiness state
+9. respond to Telegram
 
 Tools:
 
-- `wallet_status`
-- `wallet_login`
-- `wallet_verify`
-- `wallet_balance`
-- `wallet_addresses`
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
+- bounded wallet mutation tool for login / verify only
 
-## 5. `/trade-style`
+## 6. `/trade-style`
 
 Mostly deterministic with one optional bounded model step for natural-language parameter updates.
 
@@ -661,51 +649,91 @@ Primary persistence targets:
 - `user_strategy_profiles` table
 - LangGraph store namespace `(\"users\", \"strategy_profile\")`
 
-## 6. `/follow`
+## 7. `/follow`
 
-Mostly deterministic with optional model call for channel normalization.
+Mostly deterministic around scraper coordination, with model calls for historical call extraction and channel profiling.
 
 Flow:
 
 1. validate source link
-2. persist source
-3. optionally fetch recent sample messages
-4. optionally run heuristic cold-start profiling
-5. respond with follow status
+2. persist source in `profiling_pending`
+3. request recent 7-day messages from scraper
+4. receive async scraper callback with sampled messages
+5. run LLM-based trade call extraction
+6. use `okx-dex-market` K-line reads to evaluate 1-day post-call behavior
+7. produce channel conviction suggestion
+8. ask user to confirm live follow
+9. register with scraper only after user confirmation
 
 Model call:
 
-- optional for cold-start message classification
+- required for historical trade call extraction
+- required for channel profiling summary
 
-## 7. `/portfolio`
+## 8. `/portfolio`
 
-Deterministic.
+Model call: yes
+
+Agent:
+
+- `PositionTrackerAgent`
+
+Tools exposed:
+
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
+
+Required skill:
+
+- `okx-dex-market`
 
 Flow:
 
-1. load internal active positions
-2. fetch current wallet balance snapshot
-3. optionally fetch portfolio analytics
-4. render Telegram summary
+1. load active bot-managed positions from DB
+2. call `PositionTrackerAgent`
+3. agent loads `okx-dex-market`
+4. agent gathers:
+   - `onchainos market portfolio-recent-pnl`
+   - `onchainos market portfolio-token-pnl`
+   - supporting `market kline` reads when tracked tokens need richer market context
+5. map wallet PnL snapshot back onto bot-managed positions
+6. render Telegram summary
 
-Tools:
+Persist:
 
-- `get_wallet_context`
-- `get_portfolio_analytics`
+- none required except optional audit log
 
-## 8. `/history`
+## 9. `/history`
 
-Deterministic.
+Model call: yes
 
-Primary source:
+Agent:
 
-- application DB
+- `HistoryAgent`
 
-Optional enrichment:
+Tools exposed:
 
-- OKX market portfolio history tools
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 
-## 9. Tool Calling Policy Summary
+Required skill:
+
+- `okx-dex-market`
+
+Flow:
+
+1. load completed bot-managed trades from DB
+2. call `HistoryAgent`
+3. agent loads `okx-dex-market`
+4. agent gathers:
+   - `onchainos market portfolio-dex-history`
+5. merge wallet DEX history with local completed bot-managed trades
+6. apply optional time filter
+7. render compact history summary
+
+## 10. Tool Calling Policy Summary
 
 Expose tools to the model only when needed.
 

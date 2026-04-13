@@ -47,7 +47,7 @@ Implement a dedicated LangGraph workflow for scheduled exit reevaluation:
 
 1. load position
 2. load strategy profile
-3. load market context
+3. load position tracking context
 4. compute exit TA
 5. build exit inputs
 6. call exit agent
@@ -74,6 +74,12 @@ The `Exit Agent` should use market data and settings to decide between:
 - `exit_hard`
 - `exit_trailing_arm`
 - `exit_trailing_fire`
+
+Position market and PnL context should come from a dedicated `PositionTrackerAgent` that uses `okx-dex-market`, especially:
+
+- `onchainos market portfolio-recent-pnl`
+- `onchainos market portfolio-token-pnl`
+- supporting `market kline` reads for exit TA
 
 ## 5. Swap Execution Agent for Exit
 

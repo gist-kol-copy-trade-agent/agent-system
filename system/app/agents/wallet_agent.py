@@ -6,39 +6,42 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
-from app.agents.runtime_context import WalletOnboardingRuntimeContext
+from app.agents.runtime_context import WalletAgentRuntimeContext
 from app.config.settings import get_settings
 from app.services.okx_skills import OKXSkillRegistry
 from app.services.onchainos_runner import OnchainOSMutatingRunner, OnchainOSReadonlyRunner
-from app.tools.langchain_agent_tools import build_wallet_onboarding_agent_tools
+from app.tools.langchain_agent_tools import build_wallet_agent_tools
 
 
-class WalletOnboardingPayload(BaseModel):
-    logged_in: bool = Field(description="Whether the wallet is authenticated after this onboarding turn.")
+class WalletAgentPayload(BaseModel):
+    logged_in: bool = Field(description="Whether the wallet is authenticated after this turn.")
     email: str | None = Field(default=None, description="Email captured during onboarding, if applicable.")
-    wallet_evm_address: str | None = Field(default=None, description="Primary EVM wallet address after successful onboarding.")
-    wallet_sol_address: str | None = Field(default=None, description="Primary Solana wallet address after successful onboarding.")
-    wallet_xlayer_address: str | None = Field(default=None, description="Primary X Layer wallet address after successful onboarding.")
+    account_id: str | None = Field(default=None, description="Current wallet account identifier if available.")
+    account_name: str | None = Field(default=None, description="Current wallet account name if available.")
+    login_type: str | None = Field(default=None, description="Login type if exposed by the wallet skill.")
+    wallet_evm_address: str | None = Field(default=None, description="Primary EVM wallet address if available.")
+    wallet_sol_address: str | None = Field(default=None, description="Primary Solana wallet address if available.")
+    wallet_xlayer_address: str | None = Field(default=None, description="Primary X Layer wallet address if available.")
 
 
-class WalletOnboardingOutput(BaseModel):
-    phase: Literal["start", "awaiting_email", "awaiting_otp", "ready"] = Field(
-        description="Next onboarding phase after handling the current turn."
+class WalletAgentOutput(BaseModel):
+    phase: Literal["start", "awaiting_email", "awaiting_otp", "ready", "status"] = Field(
+        description="Next wallet phase after handling the current turn."
     )
-    message: str = Field(description="User-facing onboarding response.")
-    payload: WalletOnboardingPayload = Field(description="Structured onboarding state and wallet details.")
+    message: str = Field(description="User-facing wallet response.")
+    payload: WalletAgentPayload = Field(description="Structured wallet state and wallet details.")
 
 
-class WalletOnboardingBackend(Protocol):
-    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str) -> WalletOnboardingOutput: ...
+class WalletAgentBackend(Protocol):
+    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str) -> WalletAgentOutput: ...
 
 
 @dataclass
-class WalletOnboardingAgentConfig:
-    tools: list = field(default_factory=build_wallet_onboarding_agent_tools)
+class WalletAgentConfig:
+    tools: list = field(default_factory=build_wallet_agent_tools)
 
 
-class LangChainWalletOnboardingBackend:
+class LangChainWalletBackend:
     def __init__(
         self,
         *,
@@ -50,16 +53,16 @@ class LangChainWalletOnboardingBackend:
     ) -> None:
         self._agent = None
         self.model = model
-        self.tools = tools if tools is not None else build_wallet_onboarding_agent_tools()
+        self.tools = tools if tools is not None else build_wallet_agent_tools()
         self.skill_registry = skill_registry or OKXSkillRegistry()
         self.readonly_runner = readonly_runner or OnchainOSReadonlyRunner(timeout_seconds=get_settings().models.timeout_seconds)
         self.mutating_runner = mutating_runner or OnchainOSMutatingRunner(timeout_seconds=get_settings().models.timeout_seconds)
 
-    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str) -> WalletOnboardingOutput:
+    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str) -> WalletAgentOutput:
         agent = self._get_agent()
         result = agent.invoke(
             {"messages": [{"role": "user", "content": self._build_prompt(raw_text=raw_text, phase=phase, locale=locale)}]},
-            context=WalletOnboardingRuntimeContext(
+            context=WalletAgentRuntimeContext(
                 user_id=user_id,
                 raw_text=raw_text,
                 phase=phase,
@@ -79,12 +82,13 @@ class LangChainWalletOnboardingBackend:
         from langchain.agents.structured_output import ToolStrategy
 
         system_prompt = (
-            "You are a wallet onboarding agent for an OKX OnchainOS trading bot. "
-            "Always load okx-agentic-wallet first and follow its authentication flow exactly. "
+            "You are a wallet agent for an OKX OnchainOS trading bot. "
+            "Always load okx-agentic-wallet first and follow its authentication and status flow exactly. "
             "Use run_onchainos_readonly for wallet status, balance, and addresses. "
             "Use run_onchainos_mutating_wallet only for wallet_login and wallet_verify. "
-            "Support three phases: start, awaiting_email, awaiting_otp. "
-            "If wallet is already logged in, fetch balance and addresses and finish. "
+            "Support phases: start, awaiting_email, awaiting_otp, and status. "
+            "If phase=status, inspect wallet status and return current readiness without starting onboarding unless clearly needed. "
+            "If phase=start and wallet is already logged in, fetch wallet-ready details and finish. "
             "If login is needed, ask for email first, then verification code, then return wallet-ready output. "
             "Return only the structured schema."
         )
@@ -92,15 +96,15 @@ class LangChainWalletOnboardingBackend:
             model=self.model or get_settings().models.summary_model,
             tools=self.tools,
             system_prompt=system_prompt,
-            context_schema=WalletOnboardingRuntimeContext,
-            response_format=ToolStrategy(WalletOnboardingOutput),
+            context_schema=WalletAgentRuntimeContext,
+            response_format=ToolStrategy(WalletAgentOutput),
         )
         return self._agent
 
     @staticmethod
     def _build_prompt(*, raw_text: str, phase: str, locale: str) -> str:
         return (
-            "Handle this wallet onboarding turn.\n"
+            "Handle this wallet turn.\n"
             f"phase={phase}\n"
             f"locale={locale}\n"
             f"user_input={raw_text}"
@@ -118,27 +122,27 @@ class LangChainWalletOnboardingBackend:
         return {"ok": False, "error": f"unsupported wallet action: {action}"}
 
     @staticmethod
-    def _extract_output(result) -> WalletOnboardingOutput:
-        if isinstance(result, WalletOnboardingOutput):
+    def _extract_output(result) -> WalletAgentOutput:
+        if isinstance(result, WalletAgentOutput):
             return result
         if isinstance(result, dict):
             if "structured_response" in result:
                 structured = result["structured_response"]
-                if isinstance(structured, WalletOnboardingOutput):
+                if isinstance(structured, WalletAgentOutput):
                     return structured
                 if isinstance(structured, dict):
-                    return WalletOnboardingOutput(**structured)
+                    return WalletAgentOutput(**structured)
             if "output" in result and isinstance(result["output"], dict):
-                return WalletOnboardingOutput(**result["output"])
+                return WalletAgentOutput(**result["output"])
         if isinstance(result, str):
-            return WalletOnboardingOutput(**json.loads(result))
-        raise RuntimeError("Could not extract wallet onboarding output from LangChain agent result.")
+            return WalletAgentOutput(**json.loads(result))
+        raise RuntimeError("Could not extract wallet agent output from LangChain agent result.")
 
 
-class WalletOnboardingAgent:
-    def __init__(self, config: WalletOnboardingAgentConfig | None = None, backend: WalletOnboardingBackend | None = None) -> None:
-        self.config = config or WalletOnboardingAgentConfig()
-        self.backend = backend or LangChainWalletOnboardingBackend(tools=self.config.tools)
+class WalletAgent:
+    def __init__(self, config: WalletAgentConfig | None = None, backend: WalletAgentBackend | None = None) -> None:
+        self.config = config or WalletAgentConfig()
+        self.backend = backend or LangChainWalletBackend(tools=self.config.tools)
 
-    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str) -> WalletOnboardingOutput:
+    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str) -> WalletAgentOutput:
         return self.backend.handle(user_id=user_id, raw_text=raw_text, phase=phase, locale=locale)

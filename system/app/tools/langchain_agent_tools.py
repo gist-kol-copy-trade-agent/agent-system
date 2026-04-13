@@ -6,12 +6,12 @@ from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
     EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
-    ExitEnrichmentAgentRuntimeContext,
     FollowProfilingAgentRuntimeContext,
+    HistoryAgentRuntimeContext,
     ParsingAgentRuntimeContext,
+    PositionTrackerAgentRuntimeContext,
     SwapExecutionAgentRuntimeContext,
-    WalletCommandRuntimeContext,
-    WalletOnboardingRuntimeContext,
+    WalletAgentRuntimeContext,
 )
 
 
@@ -190,16 +190,16 @@ def build_enrichment_agent_tools() -> list[Any]:
     ]
 
 
-def build_wallet_command_agent_tools() -> list[Any]:
+def build_position_tracker_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def load_okx_skill(
         skill_name: str,
-        runtime: ToolRuntime[WalletCommandRuntimeContext] | None = None,
+        runtime: ToolRuntime[PositionTrackerAgentRuntimeContext] | None = None,
     ) -> str:
         """Load an OKX OnchainOS skill prompt by name.
 
         Args:
-            skill_name: Skill directory name, typically okx-agentic-wallet or okx-dex-market.
+            skill_name: Skill directory name, typically okx-dex-market.
         """
 
         if runtime is None or runtime.context is None:
@@ -210,7 +210,7 @@ def build_wallet_command_agent_tools() -> list[Any]:
     def load_okx_skill_reference(
         skill_name: str,
         relative_path: str,
-        runtime: ToolRuntime[WalletCommandRuntimeContext] | None = None,
+        runtime: ToolRuntime[PositionTrackerAgentRuntimeContext] | None = None,
     ) -> str:
         """Load a reference file inside a selected OKX skill.
 
@@ -226,7 +226,7 @@ def build_wallet_command_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def run_onchainos_readonly(
         command: str,
-        runtime: ToolRuntime[WalletCommandRuntimeContext] | None = None,
+        runtime: ToolRuntime[PositionTrackerAgentRuntimeContext] | None = None,
     ) -> dict[str, Any]:
         """Execute a read-only onchainos CLI command and return parsed output.
 
@@ -241,16 +241,16 @@ def build_wallet_command_agent_tools() -> list[Any]:
     return [load_okx_skill, load_okx_skill_reference, run_onchainos_readonly]
 
 
-def build_exit_enrichment_agent_tools() -> list[Any]:
+def build_history_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def load_okx_skill(
         skill_name: str,
-        runtime: ToolRuntime[ExitEnrichmentAgentRuntimeContext] | None = None,
+        runtime: ToolRuntime[HistoryAgentRuntimeContext] | None = None,
     ) -> str:
         """Load an OKX OnchainOS skill prompt by name.
 
         Args:
-            skill_name: Skill directory name, typically okx-dex-market or okx-dex-swap.
+            skill_name: Skill directory name, typically okx-dex-market.
         """
 
         if runtime is None or runtime.context is None:
@@ -261,7 +261,7 @@ def build_exit_enrichment_agent_tools() -> list[Any]:
     def load_okx_skill_reference(
         skill_name: str,
         relative_path: str,
-        runtime: ToolRuntime[ExitEnrichmentAgentRuntimeContext] | None = None,
+        runtime: ToolRuntime[HistoryAgentRuntimeContext] | None = None,
     ) -> str:
         """Load a reference file inside a selected OKX skill.
 
@@ -277,7 +277,7 @@ def build_exit_enrichment_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def run_onchainos_readonly(
         command: str,
-        runtime: ToolRuntime[ExitEnrichmentAgentRuntimeContext] | None = None,
+        runtime: ToolRuntime[HistoryAgentRuntimeContext] | None = None,
     ) -> dict[str, Any]:
         """Execute a read-only onchainos CLI command and return parsed output.
 
@@ -292,11 +292,11 @@ def build_exit_enrichment_agent_tools() -> list[Any]:
     return [load_okx_skill, load_okx_skill_reference, run_onchainos_readonly]
 
 
-def build_wallet_onboarding_agent_tools() -> list[Any]:
+def build_wallet_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def load_okx_skill(
         skill_name: str,
-        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+        runtime: ToolRuntime[WalletAgentRuntimeContext] | None = None,
     ) -> str:
         """Load an OKX OnchainOS skill prompt by name.
 
@@ -312,7 +312,7 @@ def build_wallet_onboarding_agent_tools() -> list[Any]:
     def load_okx_skill_reference(
         skill_name: str,
         relative_path: str,
-        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+        runtime: ToolRuntime[WalletAgentRuntimeContext] | None = None,
     ) -> str:
         """Load a reference file inside a selected OKX skill.
 
@@ -328,7 +328,7 @@ def build_wallet_onboarding_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def run_onchainos_readonly(
         command: str,
-        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+        runtime: ToolRuntime[WalletAgentRuntimeContext] | None = None,
     ) -> dict[str, Any]:
         """Execute a read-only onchainos CLI command and return parsed output.
 
@@ -343,7 +343,7 @@ def build_wallet_onboarding_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def run_onchainos_mutating_wallet(
         request: dict[str, Any],
-        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+        runtime: ToolRuntime[WalletAgentRuntimeContext] | None = None,
     ) -> dict[str, Any]:
         """Execute a bounded wallet auth mutation request.
 

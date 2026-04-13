@@ -57,17 +57,7 @@ class DecisionAgentRuntimeContext:
 
 
 @dataclass
-class WalletCommandRuntimeContext:
-    user_id: str
-    command_name: str
-    raw_text: str
-    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
-    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
-    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
-
-
-@dataclass
-class WalletOnboardingRuntimeContext:
+class WalletAgentRuntimeContext:
     user_id: str
     raw_text: str
     phase: str
@@ -92,12 +82,22 @@ class ExitAgentRuntimeContext:
     exit_ta_score_provider: Callable[[], JSONDict] = field(default=lambda: {})
 
 
-@dataclass
-class ExitEnrichmentAgentRuntimeContext:
+class PositionTrackerAgentRuntimeContext:
     user_id: str
-    position_snapshot: JSONDict
-    strategy_profile: JSONDict
-    trailing_state: JSONDict | None = None
+    mode: str
+    position_snapshot: JSONDict | None = None
+    bot_positions: list[JSONDict] | None = None
+    strategy_profile: JSONDict | None = None
+    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
+    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+
+
+@dataclass
+class HistoryAgentRuntimeContext:
+    user_id: str
+    raw_text: str
+    time_window: str | None = None
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
     load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
     readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})

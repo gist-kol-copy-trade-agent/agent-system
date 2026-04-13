@@ -136,19 +136,16 @@ class DeterministicCommandGraphService:
         channel_name = raw_text.removeprefix("/stop").strip()
         record = self.source_registry.stop(user_id=user_id, channel_name=channel_name)
         return {
-            "wallet_command_result": {
-                "message": f"Source {record.channel_name} is {record.status}.",
-                "payload": {
-                    "source_id": record.source_id,
-                    "channel_name": record.channel_name,
-                    "status": record.status,
-                },
-            }
+            "response_message": f"Source {record.channel_name} is {record.status}.",
+            "response_payload": {
+                "source_id": record.source_id,
+                "channel_name": record.channel_name,
+                "status": record.status,
+            },
         }
 
     def _node_post_process(self, state: WalletCommandGraphState) -> dict[str, Any]:
-        result = state["wallet_command_result"] or {}
         return {
-            "response_message": result.get("message"),
-            "response_payload": result.get("payload"),
+            "response_message": state.get("response_message"),
+            "response_payload": state.get("response_payload"),
         }

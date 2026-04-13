@@ -6,12 +6,12 @@ from app.adapters.scraper.client import ScraperClient, ScraperRegistrationReques
 from app.adapters.telegram.client import TelegramClient
 from app.agents.decision import DecisionAgent
 from app.agents.exit import ExitAgent
-from app.agents.exit_enrichment import ExitEnrichmentAgent
 from app.agents.follow_profiling import FollowProfilingAgent
+from app.agents.history import HistoryAgent
 from app.agents.parsing import ParsingAgent
+from app.agents.position_tracker import PositionTrackerAgent
 from app.agents.trade_style_override import TradeStyleOverrideAgent
-from app.agents.wallet_command import WalletCommandAgent
-from app.agents.wallet_onboarding import WalletOnboardingAgent
+from app.agents.wallet_agent import WalletAgent
 from app.persistence.repositories import (
     SQLAlchemyFollowedSourceRepository,
     SQLAlchemyPositionEventRepository,
@@ -37,7 +37,7 @@ from app.services.strategy_profiles import StrategyProfileService
 from app.services.telegram_commands import TelegramCommandRouter
 from app.services.trade_style_setup import TradeStyleSetupService
 from app.services.wallet_command_flow import WalletCommandGraphService
-from app.services.wallet_onboarding import WalletOnboardingService
+from app.services.wallet_service import WalletService
 from app.services.webhook_intake import WebhookIntakeService
 from app.services.workflow_runtime import (
     ExitWorkflowQueueService,
@@ -140,7 +140,7 @@ def build_application_runtime(
     exit_graph = ExitGraphService(
         strategy_profiles=strategy_profiles,
         exit_agent=ExitAgent(),
-        exit_enrichment_agent=ExitEnrichmentAgent(),
+        position_tracker_agent=PositionTrackerAgent(),
         position_repository=position_repo,
         evaluation_repository=position_eval_repo,
         execution_repository=execution_repo,
@@ -162,15 +162,15 @@ def build_application_runtime(
         source_registry=source_registry,
         callback_url=callback_url,
         callback_secret=callback_secret,
-        wallet_command_agent=WalletCommandAgent(),
         wallet_command_graph=WalletCommandGraphService(
-            wallet_command_agent=WalletCommandAgent(),
+            position_tracker_agent=PositionTrackerAgent(),
+            history_agent=HistoryAgent(),
             strategy_profiles=strategy_profiles,
             source_repository=source_repo,
             position_repository=position_repo,
         ),
-        wallet_onboarding_service=WalletOnboardingService(
-            agent=WalletOnboardingAgent(),
+        wallet_service=WalletService(
+            agent=WalletAgent(),
             repository=wallet_session_repo,
         ),
         follow_command_service=follow_command_service,

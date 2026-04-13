@@ -7,7 +7,7 @@ Implement the user-facing control plane and external service integration layer.
 This phase should produce:
 
 - Telegram command handling,
-- wallet / command agent runtime,
+- `WalletService` runtime backed by `WalletAgent`,
 - `/trade-style` strategy profile flow,
 - scraper register/unregister integration,
 - scraper webhook intake endpoint,
@@ -29,7 +29,11 @@ Implement routing and handlers for:
 - `/status`
 
 Wallet-oriented commands should not be treated as plain deterministic handlers.
-They should use a bounded wallet / command agent with `okx-agentic-wallet` skill access.
+They should use bounded OKX-skill agents:
+
+- `WalletAgent` for `/start` and `/status`
+- `PositionTrackerAgent` for `/portfolio`
+- `HistoryAgent` for `/history`
 
 ## 2. `/trade-style` End-to-End Flow
 
@@ -51,7 +55,8 @@ This is a critical phase deliverable because later trade decisions depend on it.
 
 Implement `/start`-related runtime support:
 
-- wallet / command agent
+- `WalletService` orchestration
+- `WalletAgent` invocation
 - `okx-agentic-wallet` skill loading
 - wallet status lookup through model tool calls
 - login flow initiation through bounded command flow
@@ -114,8 +119,9 @@ Implement enough read-side logic for:
 
 These should use:
 
-- wallet / command agent + `okx-agentic-wallet` for wallet-native data
-- optional `okx-dex-market` for portfolio/PnL enrichment
+- `WalletAgent` + `okx-agentic-wallet` for wallet-native readiness data
+- `PositionTrackerAgent` + `okx-dex-market` for portfolio/PnL tracking
+- `HistoryAgent` + `okx-dex-market` for DEX history tracking
 - DB-first views only for local history and durable app records
 
 ## Acceptance Criteria
@@ -134,8 +140,10 @@ These should use:
 - live channel registration happens only after user confirmation
 - `/stop` triggers scraper unregistration and deactivates the local source
 - webhook endpoint validates auth, deduplicates events, persists messages, and enqueues work
-- `/start` can show wallet + strategy readiness state through the wallet / command agent
-- `/status`, `/portfolio`, and `/history` use model-assisted OKX skill flows for wallet-origin data
+- `/start` can show wallet + strategy readiness state through `WalletAgent`
+- `/status` uses `WalletAgent` with `okx-agentic-wallet` for wallet readiness data
+- `/history` uses `HistoryAgent` with `okx-dex-market` plus local completed-trade records
+- `/portfolio` uses `PositionTrackerAgent` with `okx-dex-market` plus local bot-position records
 - command flows have integration tests for success and key failure paths
 
 ## References

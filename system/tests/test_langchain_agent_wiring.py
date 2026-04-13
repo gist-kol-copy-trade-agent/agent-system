@@ -7,22 +7,24 @@ import pytest
 from app.agents.decision import LangChainDecisionBackend
 from app.agents.enrichment import LangChainEnrichmentBackend
 from app.agents.exit import LangChainExitBackend
-from app.agents.exit_enrichment import LangChainExitEnrichmentBackend
 from app.agents.follow_profiling import LangChainFollowProfilingBackend
+from app.agents.history import LangChainHistoryBackend
 from app.agents.parsing import LangChainParsingBackend
+from app.agents.position_tracker import LangChainPositionTrackerBackend
 from app.agents.swap_execution import LangChainSwapExecutionBackend
 from app.agents.trade_style_override import LangChainTradeStyleOverrideBackend
+from app.agents.wallet_agent import LangChainWalletBackend
 from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
     EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
-    ExitEnrichmentAgentRuntimeContext,
     FollowProfilingAgentRuntimeContext,
+    HistoryAgentRuntimeContext,
     ParsingAgentRuntimeContext,
+    PositionTrackerAgentRuntimeContext,
     SwapExecutionAgentRuntimeContext,
-    WalletCommandRuntimeContext,
+    WalletAgentRuntimeContext,
 )
-from app.agents.wallet_command import LangChainWalletCommandBackend
 
 
 def test_parsing_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
@@ -191,7 +193,7 @@ def test_decision_backend_uses_runtime_context_instead_of_prompt_stuffing() -> N
     assert backend._agent.context.wallet_snapshot == {"logged_in": True, "available_balance_usd": 500.0}
 
 
-def test_wallet_command_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+def test_wallet_agent_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
     langchain = pytest.importorskip("langchain.agents")
 
     captured: dict[str, Any] = {}
@@ -203,15 +205,16 @@ def test_wallet_command_backend_registers_bound_tools_and_context_schema(monkeyp
 
     monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
 
-    backend = LangChainWalletCommandBackend()
+    backend = LangChainWalletBackend()
     backend._get_agent()
 
     kwargs = captured["kwargs"]
-    assert kwargs["context_schema"] is WalletCommandRuntimeContext
+    assert kwargs["context_schema"] is WalletAgentRuntimeContext
     assert {tool.name for tool in kwargs["tools"]} == {
         "load_okx_skill",
         "load_okx_skill_reference",
         "run_onchainos_readonly",
+        "run_onchainos_mutating_wallet",
     }
 
 
@@ -241,30 +244,6 @@ def test_exit_backend_registers_bound_tools_and_context_schema(monkeypatch) -> N
     }
 
 
-def test_exit_enrichment_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
-    langchain = pytest.importorskip("langchain.agents")
-
-    captured: dict[str, Any] = {}
-
-    def fake_create_agent(*args, **kwargs):
-        captured["args"] = args
-        captured["kwargs"] = kwargs
-        return object()
-
-    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
-
-    backend = LangChainExitEnrichmentBackend()
-    backend._get_agent()
-
-    kwargs = captured["kwargs"]
-    assert kwargs["context_schema"] is ExitEnrichmentAgentRuntimeContext
-    assert {tool.name for tool in kwargs["tools"]} == {
-        "load_okx_skill",
-        "load_okx_skill_reference",
-        "run_onchainos_readonly",
-    }
-
-
 def test_swap_execution_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
     langchain = pytest.importorskip("langchain.agents")
 
@@ -286,4 +265,52 @@ def test_swap_execution_backend_registers_bound_tools_and_context_schema(monkeyp
         "load_okx_skill",
         "load_okx_skill_reference",
         "run_onchainos_mutating_swap",
+    }
+
+
+def test_position_tracker_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainPositionTrackerBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is PositionTrackerAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_readonly",
+    }
+
+
+def test_history_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainHistoryBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is HistoryAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_readonly",
     }

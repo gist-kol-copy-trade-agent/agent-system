@@ -133,6 +133,21 @@ class ExitMarketSnapshot(TypedDict):
     kline_window: list[dict]
 
 
+class PositionTrackingSnapshot(TypedDict):
+    symbol: str
+    chain: str
+    current_price_usd: float | None
+    unrealized_pnl_pct: float | None
+    realized_pnl_pct: float | None
+    position_value_usd: float | None
+    cost_basis_usd: float | None
+    liquidity_usd: float | None
+    volume_24h_usd: float | None
+    quote_available: bool
+    quote_price_impact_pct: float | None
+    kline_window: list[dict]
+
+
 class ExitTASnapshot(TypedDict):
     asset_lane: AssetLane
     entry_price_usd: float | None

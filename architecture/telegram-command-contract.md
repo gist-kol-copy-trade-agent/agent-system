@@ -45,12 +45,15 @@ Initialize the user session and bootstrap wallet + strategy readiness.
 
 ## Behavior
 
-1. check wallet status
-2. if not logged in, start login flow
-3. fetch wallet balances and addresses
-4. check whether a strategy profile exists
-5. if no strategy profile exists, guide user toward `/trade-style`
-6. return readiness summary
+1. invoke `WalletAgent`
+2. load `okx-agentic-wallet`
+3. check wallet status
+4. if not logged in, start login flow
+5. if the user provided OTP, verify login
+6. fetch wallet balances and addresses
+7. check whether a strategy profile exists
+8. if no strategy profile exists, guide user toward `/trade-style`
+9. return readiness summary
 
 ## Output
 
@@ -69,7 +72,8 @@ Should include:
 
 ## Model Usage
 
-- not required by default
+- required for `WalletAgent` skill-guided login, verification, and status reads
+- deterministic code still owns state persistence and final response rendering
 
 ## 5. `/trade-style`
 
@@ -308,9 +312,13 @@ Show current holdings and active bot-managed positions.
 ## Behavior
 
 1. load active positions from DB
-2. fetch wallet balance snapshot
-3. optionally fetch portfolio analytics
-4. render concise summary
+2. call `PositionTrackerAgent`
+3. load `okx-dex-market`
+4. gather:
+   - `onchainos market portfolio-recent-pnl`
+   - `onchainos market portfolio-token-pnl`
+5. merge wallet PnL snapshot with active bot-managed positions
+6. render concise summary
 
 ## Output
 
@@ -325,7 +333,8 @@ Show current holdings and active bot-managed positions.
 
 ## Model Usage
 
-- optional only for response summarization
+- required for `PositionTrackerAgent` market / PnL gathering
+- optional only for additional response summarization beyond the tracked snapshot
 
 ## 9. `/history`
 
@@ -343,10 +352,15 @@ Show completed trade history and source-level performance summary.
 
 ## Behavior
 
-1. read trade history from DB
-2. apply optional time filter
-3. compute summary stats
-4. return compact history report
+1. read completed bot-managed trades from DB
+2. call `HistoryAgent`
+3. load `okx-dex-market`
+4. gather:
+   - `onchainos market portfolio-dex-history`
+5. apply optional time filter
+6. merge wallet DEX history with local completed bot-managed trades
+7. compute summary stats
+8. return compact history report
 
 ## Output
 
@@ -360,7 +374,8 @@ Show completed trade history and source-level performance summary.
 
 ## Model Usage
 
-- optional only for summarization
+- required for `HistoryAgent` DEX history gathering
+- optional only for additional summarization beyond the tracked history snapshot
 
 ## 10. `/status`
 
@@ -376,11 +391,13 @@ Show bot readiness and operating state.
 
 ## Behavior
 
-1. check wallet status
-2. check strategy profile existence
-3. count followed sources
-4. count active positions
-5. return system summary
+1. invoke `WalletAgent`
+2. load `okx-agentic-wallet`
+3. check wallet status
+4. check strategy profile existence
+5. count followed sources
+6. count active positions
+7. return system summary
 
 ## Output
 
@@ -396,7 +413,8 @@ Show bot readiness and operating state.
 
 ## Model Usage
 
-- not required
+- required for `WalletAgent` wallet status reads
+- deterministic code still owns strategy/source/position counts and final response rendering
 
 ## 11. Suggested Response Style
 

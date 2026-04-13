@@ -155,14 +155,12 @@ flowchart TD
     J --> K[Return execute or skip or block]
 ```
 
-## Wallet Command Agent
+## Wallet Agent
 
 When to load skill:
 
 - on `/start`,
-- on `/status`,
-- on `/portfolio`,
-- on `/history`.
+- on `/status`.
 
 Tools exposed:
 
@@ -173,21 +171,18 @@ Tools exposed:
 Expected OKX skills:
 
 - always `okx-agentic-wallet`
-- optionally `okx-dex-market` for portfolio / PnL context
 
 ```mermaid
 flowchart TD
-    A[Wallet Command Graph] --> B[WalletCommandAgent.invoke]
+    A[WalletService] --> B[WalletAgent.invoke]
     B --> C[load_okx_skill okx-agentic-wallet]
-    C --> D[run_onchainos_readonly wallet status or addresses or history]
-    B --> E{Need market valuation?}
-    E -- Yes --> F[load_okx_skill okx-dex-market]
-    F --> G[run_onchainos_readonly market price]
-    E -- No --> H[Skip market lookup]
-    D --> I[Summarize command result]
-    G --> I
-    H --> I
-    I --> J[Return WalletCommandOutput]
+    C --> D[run_onchainos_readonly wallet status or addresses]
+    B --> E{Need login or verify?}
+    E -- Yes --> F[run_onchainos_mutating_wallet]
+    E -- No --> G[Skip mutation]
+    D --> H[Return WalletAgentOutput]
+    F --> H
+    G --> H
 ```
 
 ## Exit Agent

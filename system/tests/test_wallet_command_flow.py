@@ -1,4 +1,5 @@
-from app.agents.wallet_command import WalletCommandAgent, WalletCommandOutput
+from app.agents.history import HistoryAgent
+from app.agents.position_tracker import PositionTrackerAgent
 from app.persistence.repositories import (
     InMemoryFollowedSourceRepository,
     InMemoryPositionRepository,
@@ -10,13 +11,49 @@ from app.services.strategy_profiles import StrategyProfileService
 from app.services.wallet_command_flow import WalletCommandGraphService, WalletCommandRequest
 
 
-class FakeWalletFlowBackend:
-    def handle(self, *, user_id: str, command_name: str, raw_text: str) -> WalletCommandOutput:
-        return WalletCommandOutput(
-            command=command_name,
-            message=f"{command_name} handled",
-            payload={"skill": "okx-agentic-wallet", "raw_text": raw_text, "user_id": user_id},
-        )
+class FakePositionTrackerBackend:
+    def track_position(self, *, position_snapshot, strategy_profile):
+        return {
+            "position_tracking_snapshot": {
+                "symbol": position_snapshot["symbol"],
+                "chain": position_snapshot["chain"],
+                "current_price_usd": position_snapshot["current_price_usd"],
+                "unrealized_pnl_pct": 5.0,
+                "realized_pnl_pct": None,
+                "position_value_usd": 105.0,
+                "cost_basis_usd": position_snapshot["entry_amount_usd"],
+                "liquidity_usd": 100000.0,
+                "volume_24h_usd": 200000.0,
+                "quote_available": True,
+                "quote_price_impact_pct": 0.4,
+                "kline_window": [{"close": 1.0}, {"close": 1.1}],
+            }
+        }
+
+    def track_portfolio(self, *, user_id, bot_positions, strategy_profile=None):
+        return {
+            "portfolio_tracking_snapshot": {
+                "wallet_recent_pnl": [{"token": "ETH", "pnl_usd": 12.0, "pnl_pct": 4.0}],
+                "token_pnl_rows": [{"symbol": "ETH", "chain": "xlayer", "unrealized_pnl_pct": 6.0, "realized_pnl_pct": None, "value_usd": 106.0}],
+                "tracked_bot_positions": [{"symbol": "ETH", "chain": "xlayer", "unrealized_pnl_pct": 6.0, "realized_pnl_pct": None, "value_usd": 106.0}],
+            }
+        }
+
+
+class FakeHistoryBackend:
+    def load_history(self, *, user_id: str, raw_text: str, time_window: str | None):
+        return {
+            "dex_history_rows": [
+                {
+                    "chain": "xlayer",
+                    "token": "ETH",
+                    "side": "buy",
+                    "amount_usd": 100.0,
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "tx_hash": "0xabc",
+                }
+            ]
+        }
 
 
 def build_service() -> WalletCommandGraphService:
@@ -69,27 +106,18 @@ def build_service() -> WalletCommandGraphService:
         )
     )
     return WalletCommandGraphService(
-        wallet_command_agent=WalletCommandAgent(backend=FakeWalletFlowBackend()),
+        position_tracker_agent=PositionTrackerAgent(backend=FakePositionTrackerBackend()),
+        history_agent=HistoryAgent(backend=FakeHistoryBackend()),
         strategy_profiles=strategy_profiles,
         source_repository=source_repo,
         position_repository=position_repo,
     )
 
 
-def test_wallet_command_flow_start() -> None:
+def test_wallet_command_flow_rejects_start() -> None:
     service = build_service()
     state = service.run(WalletCommandRequest(user_id="u1", chat_id="c1", raw_text="/start"))
-    assert state["supported_command"] is True
-    assert state["command_name"] == "start"
-    assert state["response_payload"]["skill"] == "okx-agentic-wallet"
-
-
-def test_wallet_command_flow_status_includes_local_counts() -> None:
-    service = build_service()
-    state = service.run(WalletCommandRequest(user_id="u1", chat_id="c1", raw_text="/status"))
-    assert state["response_payload"]["strategy_profile_exists"] is True
-    assert state["response_payload"]["followed_source_count"] == 1
-    assert state["response_payload"]["active_position_count"] == 1
+    assert state["supported_command"] is False
 
 
 def test_wallet_command_flow_portfolio_includes_active_positions() -> None:
@@ -97,6 +125,8 @@ def test_wallet_command_flow_portfolio_includes_active_positions() -> None:
     state = service.run(WalletCommandRequest(user_id="u1", chat_id="c1", raw_text="/portfolio"))
     assert state["response_payload"]["active_position_count"] == 1
     assert state["response_payload"]["chain_distribution"]["xlayer"] == 1
+    assert state["response_payload"]["portfolio_tracking"]["tracked_bot_positions"][0]["symbol"] == "ETH"
+    assert "PnL Snapshot" in state["response_message"]
 
 
 def test_wallet_command_flow_history() -> None:
@@ -105,3 +135,5 @@ def test_wallet_command_flow_history() -> None:
     assert state["supported_command"] is True
     assert state["command_name"] == "history"
     assert state["response_payload"]["completed_trade_count"] == 1
+    assert len(state["response_payload"]["dex_history_snapshot"]["dex_history_rows"]) == 1
+    assert "DEX history rows" in state["response_message"]

@@ -1,10 +1,11 @@
-from app.agents.wallet_command import WalletCommandAgent, WalletCommandOutput
-from app.agents.wallet_onboarding import WalletOnboardingAgent
+from app.agents.wallet_agent import WalletAgent
 from app.agents.decision import DecisionAgent
 from app.agents.enrichment import EnrichmentAgent
 from app.agents.exit import ExitAgent
 from app.agents.follow_profiling import FollowProfilingAgent
+from app.agents.history import HistoryAgent
 from app.agents.parsing import ParsingAgent
+from app.agents.position_tracker import PositionTrackerAgent
 from app.agents.trade_style_override import TradeStyleOverrideAgent
 from app.adapters.scraper.client import ScraperClient, ScraperHistoricalProfileRequest, ScraperRegistrationRequest
 from app.persistence.repositories import (
@@ -28,7 +29,7 @@ from app.services.strategy_profiles import StrategyProfileService
 from app.services.telegram_commands import TelegramCommandRouter
 from app.services.trade_style_setup import TradeStyleSetupService
 from app.services.wallet_command_flow import WalletCommandGraphService
-from app.services.wallet_onboarding import WalletOnboardingService
+from app.services.wallet_service import WalletService
 from app.services.webhook_intake import WebhookAuthError, WebhookIntakeService
 from app.services.workflow_runtime import (
     ExitWorkflowQueueService,
@@ -60,36 +61,68 @@ class FakeScraperClient(ScraperClient):
         return {"ok": True, "status": "unregistered", "source_id": source_id}
 
 
-class FakeWalletCommandBackend:
-    def handle(self, *, user_id: str, command_name: str, raw_text: str) -> WalletCommandOutput:
-        if command_name == "start":
-            return WalletCommandOutput(
-                command="start",
-                message="Wallet readiness loaded via okx-agentic-wallet.",
-                payload={"logged_in": True, "address_count": 2, "skill": "okx-agentic-wallet"},
-            )
-        if command_name == "status":
-            return WalletCommandOutput(
-                command="status",
-                message="Wallet status loaded via okx-agentic-wallet.",
-                payload={"logged_in": True, "skill": "okx-agentic-wallet"},
-            )
-        if command_name == "portfolio":
-            return WalletCommandOutput(
-                command="portfolio",
-                message="Portfolio loaded via wallet command agent.",
-                payload={"positions": [], "skill": "okx-agentic-wallet"},
-            )
-        return WalletCommandOutput(
-            command="history",
-            message="History loaded via wallet command agent.",
-            payload={"events": [], "skill": "okx-agentic-wallet"},
-        )
+class FakePositionTrackerBackend:
+    def track_position(self, *, position_snapshot, strategy_profile):
+        return {
+            "position_tracking_snapshot": {
+                "symbol": position_snapshot["symbol"],
+                "chain": position_snapshot["chain"],
+                "current_price_usd": position_snapshot["current_price_usd"],
+                "unrealized_pnl_pct": 6.0,
+                "realized_pnl_pct": None,
+                "position_value_usd": 106.0,
+                "cost_basis_usd": position_snapshot["entry_amount_usd"],
+                "liquidity_usd": 100000.0,
+                "volume_24h_usd": 200000.0,
+                "quote_available": True,
+                "quote_price_impact_pct": 0.4,
+                "kline_window": [{"close": 1.0}, {"close": 1.1}],
+            }
+        }
+
+    def track_portfolio(self, *, user_id, bot_positions, strategy_profile=None):
+        return {
+            "portfolio_tracking_snapshot": {
+                "wallet_recent_pnl": [{"token": "ETH", "pnl_usd": 12.0, "pnl_pct": 4.0}],
+                "token_pnl_rows": [{"symbol": "ETH", "chain": "xlayer", "unrealized_pnl_pct": 6.0, "realized_pnl_pct": None, "value_usd": 106.0}],
+                "tracked_bot_positions": [{"symbol": "ETH", "chain": "xlayer", "unrealized_pnl_pct": 6.0, "realized_pnl_pct": None, "value_usd": 106.0}],
+            }
+        }
 
 
-class FakeWalletOnboardingBackend:
+class FakeHistoryBackend:
+    def load_history(self, *, user_id: str, raw_text: str, time_window: str | None):
+        return {
+            "dex_history_rows": [
+                {
+                    "chain": "xlayer",
+                    "token": "ETH",
+                    "side": "buy",
+                    "amount_usd": 100.0,
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "tx_hash": "0xabc",
+                }
+            ]
+        }
+
+
+class FakeWalletBackend:
     def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str):
         text = raw_text.strip()
+        if phase == "status":
+            return type(
+                "Obj",
+                (),
+                {
+                    "message": "Wallet status loaded via okx-agentic-wallet.",
+                    "payload": {"logged_in": True, "account_name": "main", "wallet_xlayer_address": "0xabc"},
+                    "model_dump": lambda self=None: {
+                        "phase": "status",
+                        "message": "Wallet status loaded via okx-agentic-wallet.",
+                        "payload": {"logged_in": True, "account_name": "main", "wallet_xlayer_address": "0xabc"},
+                    },
+                },
+            )()
         if phase == "start":
             return type(
                 "Obj",
@@ -266,15 +299,15 @@ def build_router() -> TelegramCommandRouter:
         source_registry=source_service,
         callback_url="https://bot.example.com/webhooks/scraper/messages",
         callback_secret="secret",
-        wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
         wallet_command_graph=WalletCommandGraphService(
-            wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
+            position_tracker_agent=PositionTrackerAgent(backend=FakePositionTrackerBackend()),
+            history_agent=HistoryAgent(backend=FakeHistoryBackend()),
             strategy_profiles=strategy_service,
             source_repository=source_repo,
             position_repository=position_repo,
         ),
-        wallet_onboarding_service=WalletOnboardingService(
-            agent=WalletOnboardingAgent(backend=FakeWalletOnboardingBackend()),
+        wallet_service=WalletService(
+            agent=WalletAgent(backend=FakeWalletBackend()),
             repository=InMemoryWalletSessionRepository(),
         ),
         follow_command_service=FollowCommandService(
@@ -351,9 +384,8 @@ def test_follow_profile_callback_then_yes_confirms_follow() -> None:
         source_registry=source_service,
         callback_url="https://bot.example.com/webhooks/scraper/messages",
         callback_secret="secret",
-        wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
-        wallet_onboarding_service=WalletOnboardingService(
-            agent=WalletOnboardingAgent(backend=FakeWalletOnboardingBackend()),
+        wallet_service=WalletService(
+            agent=WalletAgent(backend=FakeWalletBackend()),
             repository=InMemoryWalletSessionRepository(),
         ),
         follow_command_service=follow_service,
@@ -391,7 +423,7 @@ def test_follow_profile_callback_then_yes_confirms_follow() -> None:
     assert confirm.payload["scraper_subscription_id"] == "sub:u1:alpha_kol"
 
 
-def test_start_email_otp_wallet_onboarding_flow() -> None:
+def test_start_email_otp_wallet_flow() -> None:
     router = build_router()
 
     start = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/start"))
@@ -410,31 +442,31 @@ def test_start_email_otp_wallet_onboarding_flow() -> None:
     assert otp.payload["wallet_evm_address"] == "0xabc"
 
 
-def test_status_route_via_wallet_command_agent() -> None:
+def test_status_route_via_wallet_agent_service() -> None:
     router = build_router()
 
     status = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/status"))
     assert status.ok is True
     assert status.command == "status"
-    assert status.payload["skill"] == "okx-agentic-wallet"
-    assert status.payload["followed_source_count"] == 1
-    assert status.payload["active_position_count"] == 1
+    assert status.payload["logged_in"] is True
+    assert status.payload["phase"] == "status"
+    assert status.payload["wallet_xlayer_address"] == "0xabc"
 
 
-def test_portfolio_and_history_route_via_wallet_command_agent() -> None:
+def test_portfolio_and_history_route_via_specialized_agents() -> None:
     router = build_router()
 
     portfolio = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/portfolio"))
     assert portfolio.ok is True
     assert portfolio.command == "portfolio"
-    assert portfolio.payload["skill"] == "okx-agentic-wallet"
     assert portfolio.payload["active_position_count"] == 1
+    assert "portfolio_tracking" in portfolio.payload
 
     history = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/history 7d"))
     assert history.ok is True
     assert history.command == "history"
-    assert history.payload["skill"] == "okx-agentic-wallet"
     assert history.payload["completed_trade_count"] == 1
+    assert "dex_history_snapshot" in history.payload
 
 
 def test_webhook_signature_and_dedupe() -> None:
@@ -584,6 +616,7 @@ def test_position_scheduler_enqueue_and_exit_runtime_invocation() -> None:
             strategy_profiles=strategy_service,
             position_repository=position_repo,
             exit_agent=ExitAgent(backend=FakeExitBackend()),
+            position_tracker_agent=PositionTrackerAgent(backend=FakePositionTrackerBackend()),
             execution_runner=FakeExitExecutionRunner(),
         ),
     )

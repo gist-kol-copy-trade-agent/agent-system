@@ -8,6 +8,7 @@ from app.schemas.domain import (
     ExitTASnapshot,
     MarketSnapshot,
     ParsedSignal,
+    PositionTrackingSnapshot,
     PositionSnapshot,
     ResolvedAsset,
     RiskSnapshot,
@@ -48,7 +49,6 @@ class WalletCommandGraphState(TypedDict):
     raw_text: str
     command_name: str | None
     supported_command: bool
-    wallet_command_result: dict[str, Any] | None
     response_message: str | None
     response_payload: dict[str, Any] | None
 
@@ -63,6 +63,7 @@ class ExitGraphState(TypedDict):
     position_snapshot: PositionSnapshot | None
     trailing_state: TrailingState | None
     exit_market_snapshot: ExitMarketSnapshot | None
+    position_tracking_snapshot: PositionTrackingSnapshot | None
     exit_ta_snapshot: ExitTASnapshot | None
     strategy_profile: UserStrategyProfile | None
     exit_decision: ExitDecision | None

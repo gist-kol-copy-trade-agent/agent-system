@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from app.agents.wallet_command import WalletCommandAgent
-from app.agents.wallet_onboarding import WalletOnboardingAgent
 from app.schemas.commands import CommandEnvelope, CommandResponse
 from app.services.follow_command import FollowCommandService
 from app.services.command_flow import DeterministicCommandGraphService
@@ -9,7 +7,7 @@ from app.services.source_registry import SourceRegistryService
 from app.services.strategy_profiles import StrategyProfileService
 from app.services.trade_style_setup import TradeStyleSetupService
 from app.services.wallet_command_flow import WalletCommandGraphService
-from app.services.wallet_onboarding import WalletOnboardingService
+from app.services.wallet_service import WalletService
 
 
 class TelegramCommandRouter:
@@ -20,8 +18,7 @@ class TelegramCommandRouter:
         source_registry: SourceRegistryService,
         callback_url: str,
         callback_secret: str,
-        wallet_command_agent: WalletCommandAgent | None = None,
-        wallet_onboarding_service: WalletOnboardingService | None = None,
+        wallet_service: WalletService | None = None,
         follow_command_service: FollowCommandService | None = None,
         trade_style_setup_service: TradeStyleSetupService | None = None,
         wallet_command_graph: WalletCommandGraphService | None = None,
@@ -31,13 +28,10 @@ class TelegramCommandRouter:
         self.source_registry = source_registry
         self.callback_url = callback_url
         self.callback_secret = callback_secret
-        self.wallet_command_agent = wallet_command_agent or WalletCommandAgent()
-        self.wallet_onboarding_service = wallet_onboarding_service
+        self.wallet_service = wallet_service
         self.follow_command_service = follow_command_service
         self.trade_style_setup_service = trade_style_setup_service
-        self.wallet_command_graph = wallet_command_graph or WalletCommandGraphService(
-            wallet_command_agent=self.wallet_command_agent
-        )
+        self.wallet_command_graph = wallet_command_graph or WalletCommandGraphService()
         self.deterministic_command_graph = deterministic_command_graph or DeterministicCommandGraphService(
             strategy_profiles=self.strategy_profiles,
             source_registry=self.source_registry,
@@ -47,13 +41,14 @@ class TelegramCommandRouter:
 
     def handle(self, envelope: CommandEnvelope) -> CommandResponse:
         text = envelope.raw_text.strip()
-        if self.wallet_onboarding_service is not None and (
-            text == "/start" or self.wallet_onboarding_service.has_pending_session(user_id=envelope.user_id)
+        if self.wallet_service is not None and (
+            text in {"/start", "/status"} or self.wallet_service.has_pending_session(user_id=envelope.user_id)
         ):
-            return self.wallet_onboarding_service.handle(
+            return self.wallet_service.handle(
                 user_id=envelope.user_id,
                 chat_id=envelope.chat_id,
                 raw_text=envelope.raw_text,
+                command="status" if text == "/status" else "start",
             )
         if self.trade_style_setup_service is not None and (
             text.startswith("/trade-style") or self.trade_style_setup_service.has_pending_session(user_id=envelope.user_id)
@@ -69,8 +64,6 @@ class TelegramCommandRouter:
             return self._handle_follow(envelope)
         if text.startswith("/stop "):
             return self._handle_stop(envelope)
-        if text == "/status":
-            return self._handle_wallet_command(envelope, command_name="status")
         if text == "/portfolio":
             return self._handle_wallet_command(envelope, command_name="portfolio")
         if text.startswith("/history"):

@@ -1,5 +1,5 @@
 from app.agents.exit import ExitAgent
-from app.agents.exit_enrichment import ExitEnrichmentAgent
+from app.agents.position_tracker import PositionTrackerAgent
 from app.agents.swap_execution import SwapExecutionAgent
 from app.persistence.repositories import (
     InMemoryPositionExitEvaluationRepository,
@@ -123,23 +123,36 @@ class FakeSwapExecutionBackend:
         }
 
 
-class FakeExitEnrichmentBackend:
+class FakePositionTrackerBackend:
     def __init__(self, *, current_price=110.0, liquidity_usd=250000.0, quote_price_impact_pct=0.4):
         self.current_price = current_price
         self.liquidity_usd = liquidity_usd
         self.quote_price_impact_pct = quote_price_impact_pct
 
-    def enrich(self, *, position_snapshot, trailing_state, strategy_profile):
+    def track_position(self, *, position_snapshot, strategy_profile):
         return {
-            "exit_market_snapshot": {
-                "asset_lane": position_snapshot["asset_lane"],
+            "position_tracking_snapshot": {
+                "symbol": position_snapshot["symbol"],
                 "chain": position_snapshot["chain"],
                 "current_price_usd": self.current_price,
+                "unrealized_pnl_pct": ((self.current_price - position_snapshot["entry_price_usd"]) / position_snapshot["entry_price_usd"]) * 100,
+                "realized_pnl_pct": None,
+                "position_value_usd": position_snapshot["entry_amount_usd"] * (self.current_price / position_snapshot["entry_price_usd"]),
+                "cost_basis_usd": position_snapshot["entry_amount_usd"],
                 "liquidity_usd": self.liquidity_usd,
                 "volume_24h_usd": 500000.0,
                 "quote_available": True,
                 "quote_price_impact_pct": self.quote_price_impact_pct,
                 "kline_window": [{"close": self.current_price * 0.97}, {"close": self.current_price}],
+            }
+        }
+
+    def track_portfolio(self, *, user_id, bot_positions, strategy_profile=None):
+        return {
+            "portfolio_tracking_snapshot": {
+                "wallet_recent_pnl": [],
+                "token_pnl_rows": [],
+                "tracked_bot_positions": [],
             }
         }
 
@@ -177,7 +190,7 @@ def build_service(backend, *, trailing_state=None, current_price=110.0, exit_mar
     service = ExitGraphService(
         strategy_profiles=strategy_service,
         exit_agent=ExitAgent(backend=backend),
-        exit_enrichment_agent=ExitEnrichmentAgent(backend=FakeExitEnrichmentBackend(current_price=exit_market_price)),
+        position_tracker_agent=PositionTrackerAgent(backend=FakePositionTrackerBackend(current_price=exit_market_price)),
         policy_engine=None,
         position_repository=position_repo,
         evaluation_repository=eval_repo,
