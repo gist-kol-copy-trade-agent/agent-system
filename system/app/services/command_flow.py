@@ -18,7 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - local scaffold fallback
     StateGraph = None  # type: ignore[assignment]
 
 
-SUPPORTED_DETERMINISTIC_COMMANDS = {"trade-style", "stop"}
+SUPPORTED_DETERMINISTIC_COMMANDS = {"stop"}
 
 
 @dataclass
@@ -113,9 +113,7 @@ class DeterministicCommandGraphService:
     def _node_classify_command(self, state: WalletCommandGraphState) -> dict[str, Any]:
         raw_text = state["raw_text"].strip()
         command_name: str | None = None
-        if raw_text.startswith("/trade-style"):
-            command_name = "trade-style"
-        elif raw_text.startswith("/stop "):
+        if raw_text.startswith("/stop "):
             command_name = "stop"
 
         supported = command_name in SUPPORTED_DETERMINISTIC_COMMANDS
@@ -134,32 +132,6 @@ class DeterministicCommandGraphService:
         command_name = state["command_name"]
         raw_text = state["raw_text"]
         user_id = state["user_id"]
-
-        if command_name == "trade-style":
-            preset, patch = self.strategy_profiles.parse_trade_style_text(raw_text)
-            if preset:
-                profile = self.strategy_profiles.apply_preset(user_id=user_id, base_style=preset, updated_by="user")
-                return {
-                    "wallet_command_result": {
-                        "message": f"Trading style updated to {profile.base_style}.",
-                        "payload": profile.model_dump(),
-                    }
-                }
-            if patch:
-                profile = self.strategy_profiles.apply_patch(user_id=user_id, patch=patch, updated_by="user")
-                return {
-                    "wallet_command_result": {
-                        "message": "Trading style overrides updated.",
-                        "payload": profile.model_dump(),
-                    }
-                }
-            profile = self.strategy_profiles.get_or_create(user_id)
-            return {
-                "wallet_command_result": {
-                    "message": "Current trading style profile.",
-                    "payload": profile.model_dump(),
-                }
-            }
 
         channel_name = raw_text.removeprefix("/stop").strip()
         record = self.source_registry.stop(user_id=user_id, channel_name=channel_name)

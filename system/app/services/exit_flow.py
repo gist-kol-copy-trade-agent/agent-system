@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from app.agents.exit import ExitAgent
+from app.agents.exit_enrichment import ExitEnrichmentAgent
 from app.agents.swap_execution import CallableSwapExecutionBackend, SwapExecutionAgent
 from app.config.settings import get_settings
 from app.graphs.runtime import build_checkpointer, invoke_graph
@@ -178,6 +179,7 @@ class ExitGraphService:
         *,
         strategy_profiles: StrategyProfileService,
         exit_agent: ExitAgent | None = None,
+        exit_enrichment_agent: ExitEnrichmentAgent | None = None,
         swap_execution_agent: SwapExecutionAgent | None = None,
         policy_engine: DefaultExitPolicyEngine | None = None,
         position_repository: PositionRepository | None = None,
@@ -189,6 +191,7 @@ class ExitGraphService:
     ) -> None:
         self.strategy_profiles = strategy_profiles
         self.exit_agent = exit_agent or ExitAgent()
+        self.exit_enrichment_agent = exit_enrichment_agent or ExitEnrichmentAgent()
         self.policy_engine = policy_engine or DefaultExitPolicyEngine()
         self.position_repository = position_repository
         self.evaluation_repository = evaluation_repository or _NullPositionExitEvaluationRepository()
@@ -321,19 +324,14 @@ class ExitGraphService:
 
     def _node_load_market_context(self, state: ExitGraphState) -> dict[str, Any]:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
-        current_price = position["current_price_usd"] or position["entry_price_usd"] or 0.0
-        return {
-            "exit_market_snapshot": ExitMarketSnapshot(
-                asset_lane=position["asset_lane"],
-                chain=position["chain"],
-                current_price_usd=current_price,
-                liquidity_usd=250000.0 if position["asset_lane"] == "regular" else None,
-                volume_24h_usd=500000.0,
-                quote_available=True,
-                quote_price_impact_pct=0.4 if position["asset_lane"] == "major" else 1.2,
-                kline_window=[{"close": current_price * 0.97}, {"close": current_price}],
-            )
-        }
+        trailing_state: TrailingState = state["trailing_state"] or {}  # type: ignore[assignment]
+        strategy_profile = state["strategy_profile"] or {}
+        enriched = self.exit_enrichment_agent.enrich(
+            position_snapshot=position,
+            trailing_state=trailing_state,
+            strategy_profile=strategy_profile,
+        )
+        return {"exit_market_snapshot": ExitMarketSnapshot(**enriched["exit_market_snapshot"])}
 
     def _node_compute_exit_ta(self, state: ExitGraphState) -> dict[str, Any]:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
@@ -344,7 +342,9 @@ class ExitGraphService:
         entry_price = position["entry_price_usd"]
         current_price = market["current_price_usd"]
         peak_price = trailing_state.get("peak_price_usd") or current_price or entry_price
-        unrealized_pnl_pct = position["unrealized_pnl_pct"]
+        unrealized_pnl_pct = None
+        if entry_price and current_price:
+            unrealized_pnl_pct = ((current_price - entry_price) / entry_price) * 100
         drawdown_from_peak_pct = None
         if peak_price and current_price:
             drawdown_from_peak_pct = max(((peak_price - current_price) / peak_price) * 100, 0.0)
@@ -532,6 +532,12 @@ class ExitGraphService:
         if self.position_repository is not None:
             record = self.position_repository.get_by_position_id(position["position_id"])
             if record is not None:
+                current_price = market.get("current_price_usd")
+                peak_price = trailing_state.get("peak_price_usd")
+                if current_price is not None:
+                    record.current_price_usd = current_price
+                if peak_price is not None:
+                    record.peak_price_since_open_usd = max(record.peak_price_since_open_usd or peak_price, peak_price)
                 record.trailing_state = trailing_state
                 record.last_exit_evaluated_at = utc_now_iso()
                 self.position_repository.save(record)
@@ -649,6 +655,12 @@ class ExitGraphService:
             record = self.position_repository.get_by_position_id(position["position_id"])
             if record is not None:
                 record.last_exit_evaluated_at = utc_now_iso()
+                current_price = market.get("current_price_usd")
+                peak_price = trailing_state.get("peak_price_usd")
+                if current_price is not None:
+                    record.current_price_usd = current_price
+                if peak_price is not None:
+                    record.peak_price_since_open_usd = max(record.peak_price_since_open_usd or peak_price, peak_price)
                 if execution_result.get("success"):
                     record.status = "closed"
                     record.closed_at = utc_now_iso()

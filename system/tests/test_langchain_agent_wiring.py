@@ -7,13 +7,16 @@ import pytest
 from app.agents.decision import LangChainDecisionBackend
 from app.agents.enrichment import LangChainEnrichmentBackend
 from app.agents.exit import LangChainExitBackend
+from app.agents.exit_enrichment import LangChainExitEnrichmentBackend
 from app.agents.follow_profiling import LangChainFollowProfilingBackend
 from app.agents.parsing import LangChainParsingBackend
 from app.agents.swap_execution import LangChainSwapExecutionBackend
+from app.agents.trade_style_override import LangChainTradeStyleOverrideBackend
 from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
     EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
+    ExitEnrichmentAgentRuntimeContext,
     FollowProfilingAgentRuntimeContext,
     ParsingAgentRuntimeContext,
     SwapExecutionAgentRuntimeContext,
@@ -87,6 +90,25 @@ def test_decision_backend_registers_bound_tools_and_context_schema(monkeypatch) 
 
     kwargs = captured["kwargs"]
     assert kwargs["context_schema"] is DecisionAgentRuntimeContext
+    assert kwargs["tools"] == []
+
+
+def test_trade_style_override_backend_registers_no_tools(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainTradeStyleOverrideBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
     assert kwargs["tools"] == []
 
 
@@ -216,6 +238,30 @@ def test_exit_backend_registers_bound_tools_and_context_schema(monkeypatch) -> N
         "get_position_snapshot",
         "get_token_market_snapshot",
         "compute_exit_ta_score",
+    }
+
+
+def test_exit_enrichment_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainExitEnrichmentBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is ExitEnrichmentAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_readonly",
     }
 
 

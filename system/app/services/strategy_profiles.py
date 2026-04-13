@@ -82,31 +82,47 @@ class StrategyProfileService:
         return self.apply_preset(user_id=user_id, base_style=base_style, updated_by="system")
 
     def apply_preset(self, *, user_id: str, base_style: TradingStyle, updated_by: str) -> UserStrategyProfile:
+        profile = self.build_preset_profile(user_id=user_id, base_style=base_style, updated_by=updated_by)
+        return self.repository.save(profile)
+
+    def build_preset_profile(self, *, user_id: str, base_style: TradingStyle, updated_by: str) -> UserStrategyProfile:
         payload = deepcopy(PRESET_PROFILES[base_style])
-        profile = UserStrategyProfile(
+        current = self.repository.get(user_id)
+        return UserStrategyProfile(
             user_id=user_id,
             base_style=base_style,
             updated_at=utc_now_iso(),
             updated_by=updated_by,
-            version=(self.repository.get(user_id).version + 1) if self.repository.get(user_id) else 1,
+            version=(current.version + 1) if current else 1,
             **payload,
         )
-        return self.repository.save(profile)
 
     def apply_patch(self, *, user_id: str, patch: StrategyProfilePatch, updated_by: str) -> UserStrategyProfile:
         current = self.get_or_create(user_id)
-        merged = current.model_dump()
+        profile = self.merge_patch(profile=current, patch=patch, updated_by=updated_by)
+        return self.repository.save(profile)
+
+    def merge_patch(
+        self,
+        *,
+        profile: UserStrategyProfile,
+        patch: StrategyProfilePatch,
+        updated_by: str,
+    ) -> UserStrategyProfile:
+        merged = profile.model_dump()
         for key, value in patch.model_dump(exclude_none=True).items():
             merged[key] = value
         merged["updated_at"] = utc_now_iso()
         merged["updated_by"] = updated_by
-        merged["version"] = current.version + 1
-        profile = UserStrategyProfile(**merged)
+        merged["version"] = profile.version + 1
+        return UserStrategyProfile(**merged)
+
+    def save_profile(self, profile: UserStrategyProfile) -> UserStrategyProfile:
         return self.repository.save(profile)
 
     def parse_trade_style_text(self, raw_text: str) -> tuple[TradingStyle | None, StrategyProfilePatch | None]:
         text = raw_text.strip().lower()
-        if text in {"/trade-style", "trade-style"}:
+        if text in {"/trade-style", "trade-style", "confirm", "cancel"}:
             return None, None
 
         for preset in ("safe", "normal", "degen"):

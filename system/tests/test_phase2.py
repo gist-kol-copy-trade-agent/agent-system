@@ -5,11 +5,14 @@ from app.agents.enrichment import EnrichmentAgent
 from app.agents.exit import ExitAgent
 from app.agents.follow_profiling import FollowProfilingAgent
 from app.agents.parsing import ParsingAgent
+from app.agents.trade_style_override import TradeStyleOverrideAgent
 from app.adapters.scraper.client import ScraperClient, ScraperHistoricalProfileRequest, ScraperRegistrationRequest
 from app.persistence.repositories import (
+    FollowedSourceRecord,
     InMemoryFollowedSourceRepository,
     InMemoryPositionRepository,
     InMemorySourceMessageRepository,
+    InMemoryStrategyProfileSessionRepository,
     InMemoryStrategyProfileRepository,
     InMemoryWorkflowRunRepository,
     InMemoryWalletSessionRepository,
@@ -23,6 +26,8 @@ from app.services.follow_command import FollowCommandService
 from app.services.source_registry import SourceRegistryService
 from app.services.strategy_profiles import StrategyProfileService
 from app.services.telegram_commands import TelegramCommandRouter
+from app.services.trade_style_setup import TradeStyleSetupService
+from app.services.wallet_command_flow import WalletCommandGraphService
 from app.services.wallet_onboarding import WalletOnboardingService
 from app.services.webhook_intake import WebhookAuthError, WebhookIntakeService
 from app.services.workflow_runtime import (
@@ -186,17 +191,88 @@ class FakeFollowProfilingBackend:
         }
 
 
+class FakeTradeStyleOverrideBackend:
+    def parse_override(self, *, raw_text: str, current_profile: dict):
+        text = raw_text.lower()
+        patch = {}
+        if "max amount per trade" in text and "250" in text:
+            patch["max_amount_per_trade_usd"] = 250
+        if "disable regular" in text:
+            patch["regular_token_lane_enabled"] = False
+        return type(
+            "Obj",
+            (),
+            {
+                "patch": __import__("app.schemas.strategy", fromlist=["StrategyProfilePatch"]).StrategyProfilePatch(**patch),
+                "change_summary": "Parsed override request.",
+            },
+        )()
+
+
 def build_router() -> TelegramCommandRouter:
     strategy_repo = InMemoryStrategyProfileRepository()
+    strategy_session_repo = InMemoryStrategyProfileSessionRepository()
     source_repo = InMemoryFollowedSourceRepository()
+    position_repo = InMemoryPositionRepository()
     strategy_service = StrategyProfileService(strategy_repo)
+    strategy_service.get_or_create("u1")
     source_service = SourceRegistryService(source_repo, FakeScraperClient())
+    source_repo.save(
+        FollowedSourceRecord(
+            source_id="u1:alpha",
+            user_id="u1",
+            channel_name="alpha",
+            channel_url="https://t.me/alpha",
+            status="active",
+        )
+    )
+    position_repo.save(
+        PositionRecord(
+            position_id="pos-1",
+            user_id="u1",
+            source_id="u1:alpha",
+            asset_lane="major",
+            chain="xlayer",
+            symbol="ETH",
+            token_contract_address=None,
+            wallet_address="0xabc",
+            entry_price_usd=3000.0,
+            entry_amount_usd=100.0,
+            current_price_usd=3200.0,
+            status="open",
+            opened_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    position_repo.save(
+        PositionRecord(
+            position_id="pos-2",
+            user_id="u1",
+            source_id="u1:alpha",
+            asset_lane="regular",
+            chain="ethereum",
+            symbol="PEPE",
+            token_contract_address="0xpepe",
+            wallet_address="0xabc",
+            entry_price_usd=1.0,
+            entry_amount_usd=50.0,
+            current_price_usd=0.8,
+            status="closed",
+            opened_at="2026-01-01T00:00:00+00:00",
+            closed_at="2026-01-02T00:00:00+00:00",
+        )
+    )
     return TelegramCommandRouter(
         strategy_profiles=strategy_service,
         source_registry=source_service,
         callback_url="https://bot.example.com/webhooks/scraper/messages",
         callback_secret="secret",
         wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
+        wallet_command_graph=WalletCommandGraphService(
+            wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
+            strategy_profiles=strategy_service,
+            source_repository=source_repo,
+            position_repository=position_repo,
+        ),
         wallet_onboarding_service=WalletOnboardingService(
             agent=WalletOnboardingAgent(backend=FakeWalletOnboardingBackend()),
             repository=InMemoryWalletSessionRepository(),
@@ -210,25 +286,38 @@ def build_router() -> TelegramCommandRouter:
             callback_url="https://bot.example.com/webhooks/scraper/follow-profile",
             callback_secret="secret",
         ),
+        trade_style_setup_service=TradeStyleSetupService(
+            strategy_profiles=strategy_service,
+            repository=strategy_session_repo,
+            override_agent=TradeStyleOverrideAgent(backend=FakeTradeStyleOverrideBackend()),
+        ),
     )
 
 
-def test_trade_style_preset_update() -> None:
+def test_trade_style_guided_setup_flow() -> None:
     router = build_router()
-    response = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/trade-style safe"))
-    assert response.ok is True
-    assert response.command == "trade-style"
-    assert response.payload["base_style"] == "safe"
-    assert response.payload["max_amount_per_trade_usd"] == 300
+    start = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/trade-style"))
+    assert start.ok is True
+    assert start.payload["phase"] == "awaiting_base_style"
+    assert "choose your trading style" in start.message.lower()
 
+    style = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="safe"))
+    assert style.ok is True
+    assert style.payload["phase"] == "awaiting_override_or_confirm"
+    assert style.payload["draft_profile"]["base_style"] == "safe"
+    assert style.payload["draft_profile"]["max_amount_per_trade_usd"] == 300
 
-def test_trade_style_override_update() -> None:
-    router = build_router()
-    response = router.handle(
-        CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/trade-style set max amount per trade to 250")
+    override = router.handle(
+        CommandEnvelope(user_id="u1", chat_id="c1", raw_text="set max amount per trade to 250")
     )
-    assert response.ok is True
-    assert response.payload["max_amount_per_trade_usd"] == 250
+    assert override.ok is True
+    assert override.payload["phase"] == "awaiting_override_or_confirm"
+    assert override.payload["draft_profile"]["max_amount_per_trade_usd"] == 250
+
+    confirm = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="confirm"))
+    assert confirm.ok is True
+    assert confirm.payload["phase"] == "ready"
+    assert confirm.payload["profile"]["max_amount_per_trade_usd"] == 250
 
 
 def test_follow_and_stop_commands() -> None:
@@ -328,6 +417,8 @@ def test_status_route_via_wallet_command_agent() -> None:
     assert status.ok is True
     assert status.command == "status"
     assert status.payload["skill"] == "okx-agentic-wallet"
+    assert status.payload["followed_source_count"] == 1
+    assert status.payload["active_position_count"] == 1
 
 
 def test_portfolio_and_history_route_via_wallet_command_agent() -> None:
@@ -337,11 +428,13 @@ def test_portfolio_and_history_route_via_wallet_command_agent() -> None:
     assert portfolio.ok is True
     assert portfolio.command == "portfolio"
     assert portfolio.payload["skill"] == "okx-agentic-wallet"
+    assert portfolio.payload["active_position_count"] == 1
 
     history = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/history 7d"))
     assert history.ok is True
     assert history.command == "history"
     assert history.payload["skill"] == "okx-agentic-wallet"
+    assert history.payload["completed_trade_count"] == 1
 
 
 def test_webhook_signature_and_dedupe() -> None:

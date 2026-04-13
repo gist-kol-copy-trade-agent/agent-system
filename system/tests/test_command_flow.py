@@ -29,14 +29,6 @@ def build_service() -> DeterministicCommandGraphService:
     )
 
 
-def test_trade_style_graph_flow() -> None:
-    service = build_service()
-    state = service.run(DeterministicCommandRequest(user_id="u1", chat_id="c1", raw_text="/trade-style safe"))
-    assert state["supported_command"] is True
-    assert state["command_name"] == "trade-style"
-    assert state["response_payload"]["base_style"] == "safe"
-
-
 def test_stop_graph_flow() -> None:
     service = build_service()
     stop = service.run(DeterministicCommandRequest(user_id="u1", chat_id="c1", raw_text="/stop alpha_kol"))

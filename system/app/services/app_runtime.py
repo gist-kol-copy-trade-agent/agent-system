@@ -6,8 +6,10 @@ from app.adapters.scraper.client import ScraperClient, ScraperRegistrationReques
 from app.adapters.telegram.client import TelegramClient
 from app.agents.decision import DecisionAgent
 from app.agents.exit import ExitAgent
+from app.agents.exit_enrichment import ExitEnrichmentAgent
 from app.agents.follow_profiling import FollowProfilingAgent
 from app.agents.parsing import ParsingAgent
+from app.agents.trade_style_override import TradeStyleOverrideAgent
 from app.agents.wallet_command import WalletCommandAgent
 from app.agents.wallet_onboarding import WalletOnboardingAgent
 from app.persistence.repositories import (
@@ -16,6 +18,7 @@ from app.persistence.repositories import (
     SQLAlchemyPositionExitEvaluationRepository,
     SQLAlchemyPositionRepository,
     SQLAlchemySourceMessageRepository,
+    SQLAlchemyStrategyProfileSessionRepository,
     SQLAlchemyStrategyProfileRepository,
     SQLAlchemyTelegramNotificationRepository,
     SQLAlchemyTradeExecutionRepository,
@@ -32,6 +35,8 @@ from app.services.signal_intake import SignalIntakeGraphService
 from app.services.source_registry import SourceRegistryService
 from app.services.strategy_profiles import StrategyProfileService
 from app.services.telegram_commands import TelegramCommandRouter
+from app.services.trade_style_setup import TradeStyleSetupService
+from app.services.wallet_command_flow import WalletCommandGraphService
 from app.services.wallet_onboarding import WalletOnboardingService
 from app.services.webhook_intake import WebhookIntakeService
 from app.services.workflow_runtime import (
@@ -99,6 +104,7 @@ def build_application_runtime(
     position_event_repo = SQLAlchemyPositionEventRepository(session_factory)
     notification_repo = SQLAlchemyTelegramNotificationRepository(session_factory)
     wallet_session_repo = SQLAlchemyWalletSessionRepository(session_factory)
+    strategy_profile_session_repo = SQLAlchemyStrategyProfileSessionRepository(session_factory)
 
     strategy_profiles = StrategyProfileService(strategy_repo)
     source_registry = SourceRegistryService(source_repo, scraper_client or NoopScraperClient())
@@ -115,6 +121,11 @@ def build_application_runtime(
         callback_url=callback_url.replace("/messages", "/follow-profile"),
         callback_secret=callback_secret,
     )
+    trade_style_setup_service = TradeStyleSetupService(
+        strategy_profiles=strategy_profiles,
+        repository=strategy_profile_session_repo,
+        override_agent=TradeStyleOverrideAgent(),
+    )
 
     signal_graph = SignalIntakeGraphService(
         parsing_agent=ParsingAgent(),
@@ -129,6 +140,7 @@ def build_application_runtime(
     exit_graph = ExitGraphService(
         strategy_profiles=strategy_profiles,
         exit_agent=ExitAgent(),
+        exit_enrichment_agent=ExitEnrichmentAgent(),
         position_repository=position_repo,
         evaluation_repository=position_eval_repo,
         execution_repository=execution_repo,
@@ -151,11 +163,18 @@ def build_application_runtime(
         callback_url=callback_url,
         callback_secret=callback_secret,
         wallet_command_agent=WalletCommandAgent(),
+        wallet_command_graph=WalletCommandGraphService(
+            wallet_command_agent=WalletCommandAgent(),
+            strategy_profiles=strategy_profiles,
+            source_repository=source_repo,
+            position_repository=position_repo,
+        ),
         wallet_onboarding_service=WalletOnboardingService(
             agent=WalletOnboardingAgent(),
             repository=wallet_session_repo,
         ),
         follow_command_service=follow_command_service,
+        trade_style_setup_service=trade_style_setup_service,
     )
     webhook_intake = WebhookIntakeService(message_repo)
     readiness = RuntimeReadinessService()

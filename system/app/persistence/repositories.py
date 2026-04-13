@@ -14,6 +14,7 @@ from app.persistence.models import (
     PositionEvent,
     PositionExitEvaluation,
     SourceMessage,
+    StrategyProfileSession,
     TelegramNotification,
     TradeExecution,
     User,
@@ -151,6 +152,15 @@ class WalletSessionRecord:
 
 
 @dataclass
+class StrategyProfileSessionRecord:
+    user_id: str
+    chat_id: str | None = None
+    status: str = "idle"
+    selected_base_style: str | None = None
+    draft_profile: dict | None = None
+
+
+@dataclass
 class TelegramNotificationRecord:
     user_id: str
     chat_id: str
@@ -176,6 +186,8 @@ class FollowedSourceRepository(Protocol):
 
     def get_pending_confirmation(self, user_id: str) -> FollowedSourceRecord | None: ...
 
+    def list_by_user(self, user_id: str) -> list[FollowedSourceRecord]: ...
+
     def save(self, record: FollowedSourceRecord) -> FollowedSourceRecord: ...
 
 
@@ -193,6 +205,8 @@ class PositionRepository(Protocol):
     def get_by_position_id(self, position_id: str) -> PositionRecord | None: ...
 
     def list_open_positions(self) -> list[PositionRecord]: ...
+
+    def list_by_user(self, user_id: str) -> list[PositionRecord]: ...
 
     def save(self, record: PositionRecord) -> PositionRecord: ...
 
@@ -217,6 +231,14 @@ class WalletSessionRepository(Protocol):
     def get(self, user_id: str) -> WalletSessionRecord | None: ...
 
     def save(self, record: WalletSessionRecord) -> WalletSessionRecord: ...
+
+
+class StrategyProfileSessionRepository(Protocol):
+    def get(self, user_id: str) -> StrategyProfileSessionRecord | None: ...
+
+    def save(self, record: StrategyProfileSessionRecord) -> StrategyProfileSessionRecord: ...
+
+    def clear(self, user_id: str) -> None: ...
 
 
 class InMemoryStrategyProfileRepository:
@@ -249,6 +271,9 @@ class InMemoryFollowedSourceRepository:
             if record.user_id == user_id and record.status == "awaiting_confirmation":
                 return record
         return None
+
+    def list_by_user(self, user_id: str) -> list[FollowedSourceRecord]:
+        return [record for record in self._records.values() if record.user_id == user_id]
 
     def save(self, record: FollowedSourceRecord) -> FollowedSourceRecord:
         self._records[record.source_id] = record
@@ -285,6 +310,9 @@ class InMemoryPositionRepository:
 
     def list_open_positions(self) -> list[PositionRecord]:
         return [record for record in self._records.values() if record.status == "open"]
+
+    def list_by_user(self, user_id: str) -> list[PositionRecord]:
+        return [record for record in self._records.values() if record.user_id == user_id]
 
     def save(self, record: PositionRecord) -> PositionRecord:
         self._records[record.position_id] = record
@@ -369,6 +397,21 @@ class InMemoryWalletSessionRepository:
     def save(self, record: WalletSessionRecord) -> WalletSessionRecord:
         self._records[record.user_id] = record
         return record
+
+
+class InMemoryStrategyProfileSessionRepository:
+    def __init__(self) -> None:
+        self._records: dict[str, StrategyProfileSessionRecord] = {}
+
+    def get(self, user_id: str) -> StrategyProfileSessionRecord | None:
+        return self._records.get(user_id)
+
+    def save(self, record: StrategyProfileSessionRecord) -> StrategyProfileSessionRecord:
+        self._records[record.user_id] = record
+        return record
+
+    def clear(self, user_id: str) -> None:
+        self._records.pop(user_id, None)
 
 
 class InMemoryTelegramNotificationRepository:
@@ -538,6 +581,32 @@ class SQLAlchemyFollowedSourceRepository(_SQLAlchemyRepositoryBase):
                 unsubscribed_at=model.unsubscribed_at.isoformat() if model.unsubscribed_at else None,
             )
 
+    def list_by_user(self, user_id: str) -> list[FollowedSourceRecord]:
+        with self.session_factory() as session:
+            user = session.execute(select(User).where(User.telegram_user_id == user_id)).scalar_one_or_none()
+            if user is None:
+                return []
+            rows = session.execute(select(FollowedSource).where(FollowedSource.user_id == user.id)).scalars().all()
+            return [
+                FollowedSourceRecord(
+                    source_id=model.source_id,
+                    user_id=user_id,
+                    channel_name=model.channel_name,
+                    channel_url=model.channel_url,
+                    chat_id=model.chat_id,
+                    status=model.status,
+                    scraper_subscription_id=model.scraper_subscription_id,
+                    profile_job_id=model.profile_job_id,
+                    suggested_conviction=model.suggested_conviction,
+                    profile_summary=model.profile_summary_json,
+                    last_profile_requested_at=model.last_profile_requested_at.isoformat() if model.last_profile_requested_at else None,
+                    profiled_at=model.profiled_at.isoformat() if model.profiled_at else None,
+                    registered_at=model.registered_at.isoformat() if model.registered_at else None,
+                    unsubscribed_at=model.unsubscribed_at.isoformat() if model.unsubscribed_at else None,
+                )
+                for model in rows
+            ]
+
     def save(self, record: FollowedSourceRecord) -> FollowedSourceRecord:
         with self.session_factory() as session:
             user = self._ensure_user(session, record.user_id)
@@ -665,6 +734,38 @@ class SQLAlchemyPositionRepository(_SQLAlchemyRepositoryBase):
                     PositionRecord(
                         position_id=model.position_id,
                         user_id=user.telegram_user_id if user else "",
+                        source_id=model.source_id,
+                        asset_lane=model.asset_lane,
+                        chain=model.chain,
+                        symbol=model.symbol,
+                        token_contract_address=model.token_contract_address,
+                        wallet_address=model.wallet_address,
+                        entry_price_usd=model.entry_price_usd,
+                        entry_amount_usd=model.entry_amount_usd,
+                        entry_token_amount=model.entry_token_amount,
+                        current_price_usd=model.current_price_usd,
+                        peak_price_since_open_usd=model.peak_price_since_open_usd,
+                        trailing_state=model.trailing_state_json,
+                        status=model.status,
+                        opened_at=model.opened_at.isoformat() if model.opened_at else None,
+                        closed_at=model.closed_at.isoformat() if model.closed_at else None,
+                        last_exit_evaluated_at=model.last_exit_evaluated_at.isoformat() if model.last_exit_evaluated_at else None,
+                    )
+                )
+            return result
+
+    def list_by_user(self, user_id: str) -> list[PositionRecord]:
+        with self.session_factory() as session:
+            user = session.execute(select(User).where(User.telegram_user_id == user_id)).scalar_one_or_none()
+            if user is None:
+                return []
+            rows = session.execute(select(Position).where(Position.user_id == user.id)).scalars().all()
+            result: list[PositionRecord] = []
+            for model in rows:
+                result.append(
+                    PositionRecord(
+                        position_id=model.position_id,
+                        user_id=user_id,
                         source_id=model.source_id,
                         asset_lane=model.asset_lane,
                         chain=model.chain,
@@ -874,6 +975,55 @@ class SQLAlchemyWalletSessionRepository(_SQLAlchemyRepositoryBase):
             model.last_synced_at = _parse_datetime(record.last_synced_at) or datetime.now(UTC)
             session.commit()
             return record
+
+
+class SQLAlchemyStrategyProfileSessionRepository(_SQLAlchemyRepositoryBase):
+    def get(self, user_id: str) -> StrategyProfileSessionRecord | None:
+        with self.session_factory() as session:
+            user = self._get_user(session, user_id)
+            if user is None:
+                return None
+            model = session.execute(
+                select(StrategyProfileSession).where(StrategyProfileSession.user_id == user.id)
+            ).scalar_one_or_none()
+            if model is None:
+                return None
+            return StrategyProfileSessionRecord(
+                user_id=user_id,
+                chat_id=model.chat_id,
+                status=model.status,
+                selected_base_style=model.selected_base_style,
+                draft_profile=model.draft_profile_json,
+            )
+
+    def save(self, record: StrategyProfileSessionRecord) -> StrategyProfileSessionRecord:
+        with self.session_factory() as session:
+            user = self._ensure_user(session, record.user_id)
+            model = session.execute(
+                select(StrategyProfileSession).where(StrategyProfileSession.user_id == user.id)
+            ).scalar_one_or_none()
+            if model is None:
+                model = StrategyProfileSession(user_id=user.id, status=record.status)
+                session.add(model)
+            model.chat_id = record.chat_id
+            model.status = record.status
+            model.selected_base_style = record.selected_base_style
+            model.draft_profile_json = record.draft_profile
+            session.commit()
+            return record
+
+    def clear(self, user_id: str) -> None:
+        with self.session_factory() as session:
+            user = self._get_user(session, user_id)
+            if user is None:
+                return
+            model = session.execute(
+                select(StrategyProfileSession).where(StrategyProfileSession.user_id == user.id)
+            ).scalar_one_or_none()
+            if model is None:
+                return
+            session.delete(model)
+            session.commit()
 
 
 def _parse_datetime(value: str | None) -> datetime | None:

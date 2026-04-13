@@ -35,10 +35,12 @@ They should use a bounded wallet / command agent with `okx-agentic-wallet` skill
 
 Implement:
 
-- read current profile
-- apply preset updates
-- parse natural-language overrides
-- validate updates
+- guided setup session start
+- style selection (`degen` / `normal` / `safe`)
+- draft profile proposal rendering
+- free-form override parsing
+- deterministic merge + validation
+- explicit `confirm` / `cancel`
 - persist to DB
 - mirror into LangGraph store
 - return final resolved profile
@@ -120,9 +122,11 @@ These should use:
 
 - Telegram command router can handle all V1 commands
 - `/trade-style` supports:
-  - view current settings
-  - preset update
+  - guided setup start
+  - preset selection
+  - draft proposal rendering
   - natural-language override update
+  - explicit confirm / cancel
 - strategy profile changes persist in DB and LangGraph store
 - `/follow` triggers scraper registration and stores the subscription mapping
 - `/follow` can trigger historical profiling before registration

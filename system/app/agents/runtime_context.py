@@ -93,6 +93,17 @@ class ExitAgentRuntimeContext:
 
 
 @dataclass
+class ExitEnrichmentAgentRuntimeContext:
+    user_id: str
+    position_snapshot: JSONDict
+    strategy_profile: JSONDict
+    trailing_state: JSONDict | None = None
+    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
+    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+
+
+@dataclass
 class SwapExecutionAgentRuntimeContext:
     user_id: str
     intent: JSONDict

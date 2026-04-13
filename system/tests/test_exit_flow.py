@@ -1,4 +1,5 @@
 from app.agents.exit import ExitAgent
+from app.agents.exit_enrichment import ExitEnrichmentAgent
 from app.agents.swap_execution import SwapExecutionAgent
 from app.persistence.repositories import (
     InMemoryPositionExitEvaluationRepository,
@@ -122,7 +123,28 @@ class FakeSwapExecutionBackend:
         }
 
 
-def build_service(backend, *, trailing_state=None, current_price=110.0):
+class FakeExitEnrichmentBackend:
+    def __init__(self, *, current_price=110.0, liquidity_usd=250000.0, quote_price_impact_pct=0.4):
+        self.current_price = current_price
+        self.liquidity_usd = liquidity_usd
+        self.quote_price_impact_pct = quote_price_impact_pct
+
+    def enrich(self, *, position_snapshot, trailing_state, strategy_profile):
+        return {
+            "exit_market_snapshot": {
+                "asset_lane": position_snapshot["asset_lane"],
+                "chain": position_snapshot["chain"],
+                "current_price_usd": self.current_price,
+                "liquidity_usd": self.liquidity_usd,
+                "volume_24h_usd": 500000.0,
+                "quote_available": True,
+                "quote_price_impact_pct": self.quote_price_impact_pct,
+                "kline_window": [{"close": self.current_price * 0.97}, {"close": self.current_price}],
+            }
+        }
+
+
+def build_service(backend, *, trailing_state=None, current_price=110.0, exit_market_price=110.0):
     position_repo = InMemoryPositionRepository()
     eval_repo = InMemoryPositionExitEvaluationRepository()
     execution_repo = InMemoryTradeExecutionRepository()
@@ -155,6 +177,7 @@ def build_service(backend, *, trailing_state=None, current_price=110.0):
     service = ExitGraphService(
         strategy_profiles=strategy_service,
         exit_agent=ExitAgent(backend=backend),
+        exit_enrichment_agent=ExitEnrichmentAgent(backend=FakeExitEnrichmentBackend(current_price=exit_market_price)),
         policy_engine=None,
         position_repository=position_repo,
         evaluation_repository=eval_repo,
@@ -247,6 +270,27 @@ def test_exit_flow_hard_exit_closes_position() -> None:
     assert len(execution_repo._records) == 1
     assert position_event_repo._records[0].event_type == "exit_execution_succeeded"
     assert notification_repo._records[-1].send_status == "sent"
+
+
+def test_exit_flow_uses_refreshed_market_price_for_pnl() -> None:
+    service, position_repo, _, _, _, _ = build_service(
+        HoldExitBackend(),
+        current_price=100.0,
+        exit_market_price=125.0,
+    )
+    state = service.run(
+        ExitFlowRequest(
+            user_id="u1",
+            position_id="pos-1",
+            cycle_id="cycle-refresh",
+            position_record=position_repo.get_by_position_id("pos-1"),  # type: ignore[arg-type]
+        )
+    )
+    assert state["exit_market_snapshot"]["current_price_usd"] == 125.0
+    assert state["exit_ta_snapshot"]["unrealized_pnl_pct"] == 25.0
+    stored = position_repo.get_by_position_id("pos-1")
+    assert stored is not None
+    assert stored.current_price_usd == 125.0
 
 
 def test_onchainos_swap_exit_execution_runner_normalizes_cli_result() -> None:

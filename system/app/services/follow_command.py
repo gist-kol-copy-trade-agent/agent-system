@@ -199,23 +199,28 @@ class FollowCommandService:
         profile = record.profile_summary or {}
         patterns = profile.get("notable_patterns") or []
         lines = [
-            "📊 Channel Profile Ready",
-            f"Channel: {record.channel_name}",
-            f"Suggested Conviction: {record.suggested_conviction or 'n/a'}",
-            f"Extracted Calls: {profile.get('extracted_call_count', 'n/a')}",
-            f"Evaluated Calls: {profile.get('evaluated_call_count', 'n/a')}",
-            f"1D Win Rate: {profile.get('win_rate_1d_pct', 'n/a')}%",
-            f"Median 1D Return: {profile.get('median_return_1d_pct', 'n/a')}%",
-            f"Average 1D Return: {profile.get('average_return_1d_pct', 'n/a')}%",
+            "📊 Follow Profile Ready",
             "",
-            str(profile.get("profiling_summary", "")),
+            f"Channel: `{record.channel_name}`",
+            f"Suggested Conviction: `{record.suggested_conviction or 'n/a'}`",
+            "",
+            "Retrospective Metrics",
+            f"- Extracted calls: `{profile.get('extracted_call_count', 'n/a')}`",
+            f"- Evaluated calls: `{profile.get('evaluated_call_count', 'n/a')}`",
+            f"- 1D win rate: `{profile.get('win_rate_1d_pct', 'n/a')}%`",
+            f"- Median 1D return: `{profile.get('median_return_1d_pct', 'n/a')}%`",
+            f"- Average 1D return: `{profile.get('average_return_1d_pct', 'n/a')}%`",
         ]
+        summary = str(profile.get("profiling_summary", "")).strip()
+        if summary:
+            lines.extend(["", "Summary", summary])
         if patterns:
-            lines.extend(["", "Patterns:"] + [f"- {pattern}" for pattern in patterns])
+            lines.extend(["", "Patterns"] + [f"- {pattern}" for pattern in patterns])
         lines.extend(
             [
                 "",
-                "Reply `yes` to start live follow, or `no` to cancel.",
+                "Reply `yes` to start live follow.",
+                "Reply `no` to cancel.",
             ]
         )
         return "\n".join(lines)

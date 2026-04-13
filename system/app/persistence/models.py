@@ -49,6 +49,17 @@ class UserStrategyProfileModel(Base, TimestampMixin):
     updated_by: Mapped[str] = mapped_column(String(64), default="system")
 
 
+class StrategyProfileSession(Base, TimestampMixin):
+    __tablename__ = "strategy_profile_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    chat_id: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(64), index=True)
+    selected_base_style: Mapped[str | None] = mapped_column(String(32))
+    draft_profile_json: Mapped[dict | None] = mapped_column(JSON)
+
+
 class FollowedSource(Base, TimestampMixin):
     __tablename__ = "followed_sources"
 

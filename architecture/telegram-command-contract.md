@@ -84,14 +84,18 @@ View or modify the global trading style and resolved strategy parameters.
 /trade-style safe
 /trade-style normal
 /trade-style degen
-/trade-style set max amount per trade to 250
-/trade-style disable regular token trades
-/trade-style set regular token slippage to 3 percent
+confirm
+cancel
+set max amount per trade to 250
+disable regular token trades
+set regular token slippage to 3 percent
 ```
 
 ## Behavior
 
-### Read Mode
+This command is a guided multi-turn setup flow.
+
+### Step 1: Start Setup
 
 If the user sends only:
 
@@ -99,57 +103,97 @@ If the user sends only:
 /trade-style
 ```
 
-the bot should return:
+the bot should:
 
-- current base style
-- current resolved parameter set
-- short explanation of what the style means
-- suggested preset alternatives
+1. load the current profile
+2. show the current base style and current resolved profile
+3. ask the user to choose one of:
+   - `degen`
+   - `normal`
+   - `safe`
+4. create or refresh a pending setup session in `awaiting_base_style`
 
-### Preset Update Mode
+### Step 2: Style Selection
 
-If the user sends:
+If the user selects:
 
 ```text
-/trade-style safe
-/trade-style normal
+degen
+normal
+safe
+```
+
+or sends:
+
+```text
 /trade-style degen
+/trade-style normal
+/trade-style safe
 ```
 
 the bot should:
 
-1. load current profile
-2. apply preset defaults
-3. preserve only fields that product rules say should remain user-controlled, if any
-4. validate final profile
-5. persist final profile
-6. return the resolved profile
+1. create a draft profile from the selected preset
+2. render the full proposed resolved parameter set
+3. ask the user to:
+   - reply `confirm` to save, or
+   - type what should be changed
+4. move the setup session to `awaiting_override_or_confirm`
 
-### Override Update Mode
+### Step 3: Override Draft
 
-If the user sends natural-language parameter changes, the bot should:
+If the user sends free-form override text while the setup session is pending, the bot should:
 
-1. parse the requested updates
-2. map them into structured fields
-3. validate values
-4. merge into current profile
-5. persist final profile
-6. return changed fields and the updated resolved profile
+1. parse the requested updates into a structured patch
+2. deterministically merge the patch into the draft profile
+3. validate the merged draft
+4. render the updated resolved profile
+5. ask again for `confirm` or more changes
+
+### Step 4: Confirm or Cancel
+
+If the user replies:
+
+```text
+confirm
+```
+
+the bot should:
+
+1. persist the resolved profile
+2. clear the pending setup session
+3. return the final saved profile
+
+If the user replies:
+
+```text
+cancel
+```
+
+the bot should:
+
+1. discard the draft setup session
+2. leave the existing saved profile unchanged
+3. return a cancellation acknowledgement
 
 ## Output
 
 Should include:
 
-- current or updated `base_style`
-- changed fields
-- final resolved profile
-- note that the profile will be used globally for future trade decisions
+- current or proposed `base_style`
+- resolved draft or final profile
+- changed fields when overrides are applied
+- a clear prompt for next action:
+  - choose style
+  - confirm
+  - or change parameters
 
 ## State Mutation
 
 - updates `user_strategy_profiles` in DB
 - updates LangGraph store `("users", "strategy_profile")`
 - appends audit record for settings change
+- uses a transient setup-session store or DB table while the guided flow is in progress
 
 ## Model Usage
 
