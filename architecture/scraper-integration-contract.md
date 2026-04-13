@@ -12,6 +12,11 @@ The integration has two directions:
 - outbound bot -> scraper API calls
 - inbound scraper -> bot webhook delivery
 
+For `/follow`, there is also a pre-registration profiling path:
+
+- outbound bot -> scraper historical fetch request
+- optional async scraper -> bot profiling webhook callback
+
 ## 2. Integration Responsibilities
 
 ## 2.1 Bot Responsibilities
@@ -147,6 +152,181 @@ Stop scraping a previously registered Telegram source.
 - if the scraper no longer has the subscription, it should still return success
 - bot should mark the source inactive locally even if scraper reports it was already absent
 
+## 4B. Outbound API: Fetch Historical Channel Messages
+
+## Endpoint
+
+```text
+POST /fetch/channel_name/messages
+```
+
+This is the bot -> scraper call.
+
+## Purpose
+
+Fetch recent channel messages for cold-start profiling before the bot asks the user to confirm follow.
+
+This endpoint is intended for `/follow` pre-registration analysis.
+
+## Request Body
+
+```json
+{
+  "request_id": "follow_profile_req_123",
+  "source_id": "src_123",
+  "channel_name": "some_kol_channel",
+  "channel_url": "https://t.me/some_kol_channel",
+  "lookback_days": 7,
+  "limit": 500,
+  "delivery_mode": "async_webhook",
+  "callback_url": "https://bot.example.com/webhooks/scraper/follow-profile",
+  "callback_secret": "bot-managed-shared-secret",
+  "user_id": "user_123"
+}
+```
+
+## Required Fields
+
+- `request_id`
+- `source_id`
+- `channel_name`
+- `lookback_days`
+- `delivery_mode`
+- `callback_url`
+- `callback_secret`
+- `user_id`
+
+## Behavior Rules
+
+- scraper should fetch messages for the requested lookback window, defaulting to the most recent 7 days for the MVP flow
+- scraper may truncate to `limit` if the channel is very active
+- scraper should not register the channel as an active live subscription in this step
+- scraper should support at least `delivery_mode = async_webhook`
+- this call may be long-running; the bot should not block the Telegram request waiting for completion
+
+## Immediate Response
+
+```json
+{
+  "ok": true,
+  "request_id": "follow_profile_req_123",
+  "status": "accepted",
+  "delivery_mode": "async_webhook"
+}
+```
+
+## Failure Cases
+
+Example:
+
+```json
+{
+  "ok": false,
+  "error_code": "CHANNEL_FETCH_UNAVAILABLE",
+  "message": "Historical fetch is temporarily unavailable"
+}
+```
+
+The bot should:
+
+- keep the source in local `profiling_pending` or `profiling_failed` state
+- return an actionable Telegram message to the user
+- avoid registering the channel for live follow until profiling completes and the user confirms
+
+## 4C. Inbound Webhook: Historical Follow Profiling Result
+
+## Endpoint
+
+```text
+POST /webhooks/scraper/follow-profile
+```
+
+This is the scraper -> bot callback for historical sample delivery.
+
+## Purpose
+
+Deliver the requested historical messages so the bot can run:
+
+- LLM-based call extraction
+- market-history-based retrospective evaluation
+- channel conviction suggestion
+
+## Request Headers
+
+Required:
+
+- `X-Scraper-Signature`
+- `X-Scraper-Timestamp`
+- `X-Request-Id`
+
+## Request Body
+
+```json
+{
+  "request_id": "follow_profile_req_123",
+  "source_id": "src_123",
+  "channel_name": "some_kol_channel",
+  "lookback_days": 7,
+  "message_count": 142,
+  "messages": [
+    {
+      "message_id": "123",
+      "message_text": "Buy ETH now, target 3.5k",
+      "message_timestamp": "2026-04-13T09:15:00Z",
+      "message_url": "https://t.me/some_kol_channel/123"
+    }
+  ],
+  "raw_payload": {
+    "scraper": "optional vendor payload"
+  }
+}
+```
+
+## Required Fields
+
+- `request_id`
+- `source_id`
+- `channel_name`
+- `messages`
+
+## Bot-Side Behavior
+
+When this webhook is received, the bot should:
+
+1. verify signature and freshness
+2. validate payload schema
+3. persist profiling request result and sampled messages
+4. run call extraction with LLM
+5. fetch post-call price history with `okx-dex-market` / `onchainos market kline`
+6. compute retrospective 1-day hit-rate / win-rate style metrics
+7. build a channel profiling summary
+8. send the analysis to the user and ask whether they want to follow the channel
+
+The webhook handler may enqueue a profiling workflow instead of doing the entire analysis inline.
+
+## Profiling Workflow Output Contract
+
+The bot-side profiling result should produce, at minimum:
+
+```json
+{
+  "source_id": "src_123",
+  "channel_name": "some_kol_channel",
+  "sample_window_days": 7,
+  "sample_message_count": 142,
+  "extracted_call_count": 19,
+  "evaluated_call_count": 15,
+  "win_rate_1d": 0.6,
+  "median_return_1d_pct": 8.4,
+  "major_asset_bias": 0.7,
+  "regular_token_bias": 0.3,
+  "suggested_conviction": "medium",
+  "profiling_summary": "Channel shows solid 1-day follow-through on major-asset calls, with moderate consistency."
+}
+```
+
+This result should be persisted before asking the user for final follow confirmation.
+
 ## 5. Inbound Webhook: New Telegram Message
 
 ## Endpoint
@@ -258,6 +438,22 @@ The bot should treat these as uniqueness keys:
 - secondary safety key: `source_id + message_id + message_timestamp`
 
 The scraper should also avoid sending duplicate events when possible.
+
+## 7. `/follow` Integration Sequence
+
+The intended `/follow` sequence for MVP is:
+
+1. user sends `/follow <channel>`
+2. bot validates and normalizes source input
+3. bot persists local source in `profiling_pending`
+4. bot calls `POST /fetch/channel_name/messages`
+5. scraper asynchronously returns sampled messages via `POST /webhooks/scraper/follow-profile`
+6. bot runs LLM call extraction
+7. bot runs retrospective market evaluation with `okx-dex-market`
+8. bot sends channel analysis to the user with a suggested conviction level
+9. user confirms whether to actually follow the channel
+10. only after confirmation, bot calls `POST /register/channel_name`
+11. bot marks the source active locally
 
 ## 7. Retry Policy
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.http_app import ScraperWebhookHandler
+from app.http_app import ScraperFollowProfileWebhookHandler, ScraperWebhookHandler
 from app.schemas.commands import CommandResponse
 from app.telegram_bot import TelegramCommandService
 from app.services.webhook_intake import AcceptedWebhookEvent, WebhookIntakeService
 from app.persistence.repositories import InMemorySourceMessageRepository
-from app.schemas.webhook import ScraperWebhookPayload
+from app.schemas.webhook import ScraperFollowProfileWebhookPayload, ScraperWebhookPayload
 
 
 @dataclass
@@ -31,12 +31,27 @@ class _FakeReadiness:
         return type("Result", (), {"ok": True, "checks": {"onchainos_binary": {"ok": True, "detail": "/usr/bin/onchainos"}}})()
 
 
+class _FakeFollowCommandService:
+    def accept_profile_callback(self, payload: ScraperFollowProfileWebhookPayload):
+        return type(
+            "Accepted",
+            (),
+            {
+                "source_id": payload.source_id,
+                "channel_name": payload.channel_name,
+                "suggested_conviction": "medium",
+                "status": "awaiting_confirmation",
+            },
+        )()
+
+
 class _FakeRuntime:
     def __init__(self) -> None:
         self.webhook_intake = WebhookIntakeService(InMemorySourceMessageRepository())
         self.signal_queue = _FakeSignalQueue()
         self.signal_runtime = _FakeSignalRuntime()
         self.readiness = _FakeReadiness()
+        self.follow_command_service = _FakeFollowCommandService()
 
 
 class _FakeRouter:
@@ -73,3 +88,34 @@ def test_telegram_command_service_routes_text_to_router() -> None:
     result = service.handle_text(user_id="u1", chat_id="c1", raw_text="/status")
     assert result.ok is True
     assert result.text == "echo:/status"
+
+
+def test_follow_profile_webhook_handler_accepts_signed_payload() -> None:
+    runtime = _FakeRuntime()
+    follow_handler = ScraperFollowProfileWebhookHandler(runtime, webhook_secret="secret")
+    payload = ScraperFollowProfileWebhookPayload(
+        event_id="evt-follow-1",
+        event_type="telegram.follow_profile.ready",
+        source_id="u1:alpha",
+        user_id="u1",
+        channel_name="alpha",
+        channel_url="https://t.me/alpha",
+        profile_job_id="profile:u1:alpha",
+        messages=[
+            {
+                "message_id": "m1",
+                "message_text": "BUY ETH",
+                "message_timestamp": "2026-01-01T00:00:00Z",
+                "message_url": "https://t.me/alpha/1",
+            }
+        ],
+        raw_payload={},
+    )
+    body = payload.model_dump_json().encode()
+    signature = runtime.webhook_intake.build_signature(body=body, timestamp="123", secret="secret")
+
+    result = follow_handler.handle(body=body, timestamp="123", signature=signature)
+
+    assert result.status_code == 202
+    assert result.body["ok"] is True
+    assert result.body["status"] == "awaiting_confirmation"

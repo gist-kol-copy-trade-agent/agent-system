@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from app.agents.wallet_command import WalletCommandAgent
+from app.agents.wallet_onboarding import WalletOnboardingAgent
 from app.schemas.commands import CommandEnvelope, CommandResponse
+from app.services.follow_command import FollowCommandService
 from app.services.command_flow import DeterministicCommandGraphService
 from app.services.source_registry import SourceRegistryService
 from app.services.strategy_profiles import StrategyProfileService
 from app.services.wallet_command_flow import WalletCommandGraphService
+from app.services.wallet_onboarding import WalletOnboardingService
 
 
 class TelegramCommandRouter:
@@ -17,6 +20,8 @@ class TelegramCommandRouter:
         callback_url: str,
         callback_secret: str,
         wallet_command_agent: WalletCommandAgent | None = None,
+        wallet_onboarding_service: WalletOnboardingService | None = None,
+        follow_command_service: FollowCommandService | None = None,
         wallet_command_graph: WalletCommandGraphService | None = None,
         deterministic_command_graph: DeterministicCommandGraphService | None = None,
     ) -> None:
@@ -25,6 +30,8 @@ class TelegramCommandRouter:
         self.callback_url = callback_url
         self.callback_secret = callback_secret
         self.wallet_command_agent = wallet_command_agent or WalletCommandAgent()
+        self.wallet_onboarding_service = wallet_onboarding_service
+        self.follow_command_service = follow_command_service
         self.wallet_command_graph = wallet_command_graph or WalletCommandGraphService(
             wallet_command_agent=self.wallet_command_agent
         )
@@ -37,16 +44,28 @@ class TelegramCommandRouter:
 
     def handle(self, envelope: CommandEnvelope) -> CommandResponse:
         text = envelope.raw_text.strip()
+        if self.wallet_onboarding_service is not None and (
+            text == "/start" or self.wallet_onboarding_service.has_pending_session(user_id=envelope.user_id)
+        ):
+            return self.wallet_onboarding_service.handle(
+                user_id=envelope.user_id,
+                chat_id=envelope.chat_id,
+                raw_text=envelope.raw_text,
+            )
         if text.startswith("/trade-style"):
             return self._handle_trade_style(envelope)
-        if text.startswith("/follow "):
+        if self.follow_command_service is not None and (
+            text.startswith("/follow")
+            or (
+                self.follow_command_service.has_pending_confirmation(user_id=envelope.user_id)
+                and text.lower() in {"yes", "y", "no", "n"}
+            )
+        ):
             return self._handle_follow(envelope)
         if text.startswith("/stop "):
             return self._handle_stop(envelope)
         if text == "/status":
             return self._handle_wallet_command(envelope, command_name="status")
-        if text == "/start":
-            return self._handle_wallet_command(envelope, command_name="start")
         if text == "/portfolio":
             return self._handle_wallet_command(envelope, command_name="portfolio")
         if text.startswith("/history"):
@@ -63,12 +82,12 @@ class TelegramCommandRouter:
         )
 
     def _handle_follow(self, envelope: CommandEnvelope) -> CommandResponse:
-        state = self.deterministic_command_graph.run(envelope)
-        return CommandResponse(
-            ok=bool(state["supported_command"]),
-            command="follow",
-            message=str(state["response_message"] or ""),
-            payload=state["response_payload"] or {},
+        if self.follow_command_service is None:
+            return CommandResponse(ok=False, command="follow", message="Follow service is not configured.", payload={})
+        return self.follow_command_service.handle(
+            user_id=envelope.user_id,
+            chat_id=envelope.chat_id,
+            raw_text=envelope.raw_text,
         )
 
     def _handle_stop(self, envelope: CommandEnvelope) -> CommandResponse:

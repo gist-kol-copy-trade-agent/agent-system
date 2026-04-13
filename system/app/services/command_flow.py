@@ -18,7 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - local scaffold fallback
     StateGraph = None  # type: ignore[assignment]
 
 
-SUPPORTED_DETERMINISTIC_COMMANDS = {"trade-style", "follow", "stop"}
+SUPPORTED_DETERMINISTIC_COMMANDS = {"trade-style", "stop"}
 
 
 @dataclass
@@ -115,8 +115,6 @@ class DeterministicCommandGraphService:
         command_name: str | None = None
         if raw_text.startswith("/trade-style"):
             command_name = "trade-style"
-        elif raw_text.startswith("/follow "):
-            command_name = "follow"
         elif raw_text.startswith("/stop "):
             command_name = "stop"
 
@@ -160,27 +158,6 @@ class DeterministicCommandGraphService:
                 "wallet_command_result": {
                     "message": "Current trading style profile.",
                     "payload": profile.model_dump(),
-                }
-            }
-
-        if command_name == "follow":
-            channel_name = raw_text.removeprefix("/follow").strip()
-            record = self.source_registry.follow(
-                user_id=user_id,
-                channel_name=channel_name,
-                channel_url=f"https://t.me/{channel_name}",
-                callback_url=self.callback_url,
-                callback_secret=self.callback_secret,
-            )
-            return {
-                "wallet_command_result": {
-                    "message": f"Source {record.channel_name} is {record.status}.",
-                    "payload": {
-                        "source_id": record.source_id,
-                        "channel_name": record.channel_name,
-                        "status": record.status,
-                        "scraper_subscription_id": record.scraper_subscription_id,
-                    },
                 }
             }
 

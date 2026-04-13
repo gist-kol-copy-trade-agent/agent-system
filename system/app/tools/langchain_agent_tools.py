@@ -6,9 +6,11 @@ from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
     EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
+    FollowProfilingAgentRuntimeContext,
     ParsingAgentRuntimeContext,
     SwapExecutionAgentRuntimeContext,
     WalletCommandRuntimeContext,
+    WalletOnboardingRuntimeContext,
 )
 
 
@@ -80,6 +82,57 @@ def build_parsing_agent_tools() -> list[Any]:
 
 def build_decision_agent_tools() -> list[Any]:
     return []
+
+
+def build_follow_profiling_agent_tools() -> list[Any]:
+    @tool(parse_docstring=True)
+    def load_okx_skill(
+        skill_name: str,
+        runtime: ToolRuntime[FollowProfilingAgentRuntimeContext] | None = None,
+    ) -> str:
+        """Load an OKX OnchainOS skill prompt by name.
+
+        Args:
+            skill_name: Skill directory name, typically okx-dex-market.
+        """
+
+        if runtime is None or runtime.context is None:
+            return ""
+        return runtime.context.load_skill_provider(skill_name)
+
+    @tool(parse_docstring=True)
+    def load_okx_skill_reference(
+        skill_name: str,
+        relative_path: str,
+        runtime: ToolRuntime[FollowProfilingAgentRuntimeContext] | None = None,
+    ) -> str:
+        """Load a reference file inside a selected OKX skill.
+
+        Args:
+            skill_name: Skill directory name.
+            relative_path: Relative path inside the skill directory.
+        """
+
+        if runtime is None or runtime.context is None:
+            return ""
+        return runtime.context.load_reference_provider(skill_name, relative_path)
+
+    @tool(parse_docstring=True)
+    def run_onchainos_readonly(
+        command: str,
+        runtime: ToolRuntime[FollowProfilingAgentRuntimeContext] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a read-only onchainos CLI command and return parsed output.
+
+        Args:
+            command: Full onchainos command string. Side-effecting commands are not allowed here.
+        """
+
+        if runtime is None or runtime.context is None:
+            return {"ok": False, "error": "missing runtime context"}
+        return runtime.context.readonly_command_provider(command)
+
+    return [load_okx_skill, load_okx_skill_reference, run_onchainos_readonly]
 
 
 def build_enrichment_agent_tools() -> list[Any]:
@@ -185,6 +238,72 @@ def build_wallet_command_agent_tools() -> list[Any]:
         return runtime.context.readonly_command_provider(command)
 
     return [load_okx_skill, load_okx_skill_reference, run_onchainos_readonly]
+
+
+def build_wallet_onboarding_agent_tools() -> list[Any]:
+    @tool(parse_docstring=True)
+    def load_okx_skill(
+        skill_name: str,
+        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+    ) -> str:
+        """Load an OKX OnchainOS skill prompt by name.
+
+        Args:
+            skill_name: Skill directory name.
+        """
+
+        if runtime is None or runtime.context is None:
+            return ""
+        return runtime.context.load_skill_provider(skill_name)
+
+    @tool(parse_docstring=True)
+    def load_okx_skill_reference(
+        skill_name: str,
+        relative_path: str,
+        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+    ) -> str:
+        """Load a reference file inside a selected OKX skill.
+
+        Args:
+            skill_name: Skill directory name.
+            relative_path: Relative path inside the skill directory.
+        """
+
+        if runtime is None or runtime.context is None:
+            return ""
+        return runtime.context.load_reference_provider(skill_name, relative_path)
+
+    @tool(parse_docstring=True)
+    def run_onchainos_readonly(
+        command: str,
+        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a read-only onchainos CLI command and return parsed output.
+
+        Args:
+            command: Full onchainos command string. Side-effecting commands are not allowed here.
+        """
+
+        if runtime is None or runtime.context is None:
+            return {"ok": False, "error": "missing runtime context"}
+        return runtime.context.readonly_command_provider(command)
+
+    @tool(parse_docstring=True)
+    def run_onchainos_mutating_wallet(
+        request: dict[str, Any],
+        runtime: ToolRuntime[WalletOnboardingRuntimeContext] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a bounded wallet auth mutation request.
+
+        Args:
+            request: Structured wallet auth request. Supported actions are wallet_login and wallet_verify.
+        """
+
+        if runtime is None or runtime.context is None:
+            return {"ok": False, "error": "missing runtime context"}
+        return runtime.context.mutating_wallet_provider(request)
+
+    return [load_okx_skill, load_okx_skill_reference, run_onchainos_readonly, run_onchainos_mutating_wallet]
 
 
 def build_exit_agent_tools() -> list[Any]:

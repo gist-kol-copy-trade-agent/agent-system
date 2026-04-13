@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.schemas.webhook import ScraperWebhookPayload
+from app.schemas.webhook import ScraperFollowProfileWebhookPayload, ScraperWebhookPayload
 from app.services.app_runtime import ApplicationRuntime
 from app.services.webhook_intake import WebhookAuthError
 
@@ -48,6 +48,36 @@ class ScraperWebhookHandler:
         )
 
 
+class ScraperFollowProfileWebhookHandler:
+    def __init__(self, runtime: ApplicationRuntime, *, webhook_secret: str) -> None:
+        self.runtime = runtime
+        self.webhook_secret = webhook_secret
+
+    def handle(self, *, body: bytes, timestamp: str, signature: str) -> WebhookHTTPResult:
+        try:
+            self.runtime.webhook_intake.verify_signature(
+                body=body,
+                timestamp=timestamp,
+                secret=self.webhook_secret,
+                provided_signature=signature,
+            )
+        except WebhookAuthError:
+            return WebhookHTTPResult(status_code=401, body={"ok": False, "error": "invalid_signature"})
+
+        payload = ScraperFollowProfileWebhookPayload.model_validate_json(body)
+        accepted = self.runtime.follow_command_service.accept_profile_callback(payload)
+        return WebhookHTTPResult(
+            status_code=202,
+            body={
+                "ok": True,
+                "source_id": accepted.source_id,
+                "channel_name": accepted.channel_name,
+                "suggested_conviction": accepted.suggested_conviction,
+                "status": accepted.status,
+            },
+        )
+
+
 def create_http_app(runtime: ApplicationRuntime, *, webhook_secret: str):
     try:
         from fastapi import FastAPI, Header, Request
@@ -56,6 +86,7 @@ def create_http_app(runtime: ApplicationRuntime, *, webhook_secret: str):
         raise RuntimeError("FastAPI is not installed.") from exc
 
     handler = ScraperWebhookHandler(runtime, webhook_secret=webhook_secret)
+    follow_profile_handler = ScraperFollowProfileWebhookHandler(runtime, webhook_secret=webhook_secret)
     app = FastAPI(title="OKX Agent System", version="0.1.0")
 
     @app.get("/healthz")
@@ -75,6 +106,16 @@ def create_http_app(runtime: ApplicationRuntime, *, webhook_secret: str):
     ):
         body = await request.body()
         result = handler.handle(body=body, timestamp=x_scraper_timestamp, signature=x_scraper_signature)
+        return JSONResponse(status_code=result.status_code, content=result.body)
+
+    @app.post("/webhooks/scraper/follow-profile")
+    async def scraper_follow_profile_webhook(
+        request: Request,
+        x_scraper_timestamp: str = Header(...),
+        x_scraper_signature: str = Header(...),
+    ):
+        body = await request.body()
+        result = follow_profile_handler.handle(body=body, timestamp=x_scraper_timestamp, signature=x_scraper_signature)
         return JSONResponse(status_code=result.status_code, content=result.body)
 
     return app

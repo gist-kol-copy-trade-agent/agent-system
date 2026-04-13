@@ -37,13 +37,8 @@ def test_trade_style_graph_flow() -> None:
     assert state["response_payload"]["base_style"] == "safe"
 
 
-def test_follow_and_stop_graph_flow() -> None:
+def test_stop_graph_flow() -> None:
     service = build_service()
-    follow = service.run(DeterministicCommandRequest(user_id="u1", chat_id="c1", raw_text="/follow alpha_kol"))
-    assert follow["supported_command"] is True
-    assert follow["command_name"] == "follow"
-    assert follow["response_payload"]["status"] == "active"
-
     stop = service.run(DeterministicCommandRequest(user_id="u1", chat_id="c1", raw_text="/stop alpha_kol"))
     assert stop["supported_command"] is True
     assert stop["command_name"] == "stop"

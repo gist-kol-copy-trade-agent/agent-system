@@ -34,6 +34,16 @@ class EnrichmentAgentRuntimeContext:
 
 
 @dataclass
+class FollowProfilingAgentRuntimeContext:
+    user_id: str
+    source_id: str
+    channel_name: str
+    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
+    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+
+
+@dataclass
 class DecisionAgentRuntimeContext:
     user_id: str
     parsed_signal: JSONDict
@@ -54,6 +64,18 @@ class WalletCommandRuntimeContext:
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
     load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
     readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+
+
+@dataclass
+class WalletOnboardingRuntimeContext:
+    user_id: str
+    raw_text: str
+    phase: str
+    locale: str
+    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
+    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+    mutating_wallet_provider: Callable[[JSONDict], JSONDict] = field(default=lambda _request: {})
 
 
 @dataclass

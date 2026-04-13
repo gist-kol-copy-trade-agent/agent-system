@@ -91,8 +91,14 @@ Do not perform full trade analysis inline in the webhook request path.
 
 Implement:
 
-- local source creation in pending state
-- scraper registration on `/follow`
+- local source creation in profiling-pending state
+- scraper historical fetch request on `/follow`
+- async profiling callback intake
+- LLM call extraction over 7-day samples
+- retrospective 1-day market evaluation for extracted calls
+- channel profile summary and conviction suggestion
+- explicit user confirmation before live registration
+- scraper registration only after user confirms follow
 - scraper unregistration on `/stop`
 - final source state transitions
 
@@ -119,6 +125,9 @@ These should use:
   - natural-language override update
 - strategy profile changes persist in DB and LangGraph store
 - `/follow` triggers scraper registration and stores the subscription mapping
+- `/follow` can trigger historical profiling before registration
+- profiling result is delivered asynchronously and converted into a user-facing channel analysis
+- live channel registration happens only after user confirmation
 - `/stop` triggers scraper unregistration and deactivates the local source
 - webhook endpoint validates auth, deduplicates events, persists messages, and enqueues work
 - `/start` can show wallet + strategy readiness state through the wallet / command agent

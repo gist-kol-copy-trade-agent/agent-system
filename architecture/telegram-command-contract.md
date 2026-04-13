@@ -172,26 +172,50 @@ Register a Telegram source for monitoring.
 
 1. validate source input
 2. normalize channel identifier
-3. create or update local source in pending state
-4. call scraper `POST /register/channel_name`
-5. persist scraper registration result
-6. optionally trigger cold-start profiling job
-7. return source status
+3. create or update local source in `profiling_pending` state
+4. call scraper historical fetch API for the most recent 7 days
+5. persist profiling request state
+6. asynchronously receive sampled messages from scraper
+7. run LLM-based call extraction on sampled messages
+8. use `okx-dex-market` / `onchainos market kline` to evaluate price behavior within 1 day after each call
+9. build a channel profile and suggested conviction level
+10. ask user whether they want to follow the channel
+11. only after confirmation, call scraper `POST /register/channel_name`
+12. persist scraper registration result
+13. return final source status
 
 ## Output
 
+Phase 1 response:
+
+- source normalized
+- profiling started / pending status
+
+Phase 2 response after profiling:
+
+- sample size
+- extracted call count
+- retrospective quality summary
+- suggested conviction
+- follow confirmation prompt
+
+Phase 3 response after user confirms:
+
 - source registered status
 - normalized source id
-- whether profiling is pending
+- suggested conviction snapshot
 
 ## State Mutation
 
 - creates or updates `followed_sources`
-- stores `scraper_subscription_id` if registration succeeds
+- stores profiling request state and summary
+- stores `scraper_subscription_id` only after registration succeeds
 
 ## Model Usage
 
-- optional only for source-name normalization or profiling
+- required for historical call extraction
+- recommended for final channel profiling summary
+- not required for final scraper registration once the user confirms
 
 ## 7. `/stop`
 

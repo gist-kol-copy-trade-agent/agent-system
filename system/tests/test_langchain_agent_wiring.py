@@ -7,12 +7,14 @@ import pytest
 from app.agents.decision import LangChainDecisionBackend
 from app.agents.enrichment import LangChainEnrichmentBackend
 from app.agents.exit import LangChainExitBackend
+from app.agents.follow_profiling import LangChainFollowProfilingBackend
 from app.agents.parsing import LangChainParsingBackend
 from app.agents.swap_execution import LangChainSwapExecutionBackend
 from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
     EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
+    FollowProfilingAgentRuntimeContext,
     ParsingAgentRuntimeContext,
     SwapExecutionAgentRuntimeContext,
     WalletCommandRuntimeContext,
@@ -86,6 +88,30 @@ def test_decision_backend_registers_bound_tools_and_context_schema(monkeypatch) 
     kwargs = captured["kwargs"]
     assert kwargs["context_schema"] is DecisionAgentRuntimeContext
     assert kwargs["tools"] == []
+
+
+def test_follow_profiling_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainFollowProfilingBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is FollowProfilingAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_readonly",
+    }
 
 
 def test_decision_backend_uses_runtime_context_instead_of_prompt_stuffing() -> None:

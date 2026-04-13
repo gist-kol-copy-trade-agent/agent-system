@@ -26,7 +26,8 @@ def test_application_runtime_follow_command_persists_source() -> None:
     assert response.ok is True
     stored = runtime.source_registry.repository.get_by_source_id("u-db-2:alpha_kol")
     assert stored is not None
-    assert stored.status == "active"
+    assert stored.status == "profiling_pending"
+    assert stored.profile_job_id == "profile:u-db-2:alpha_kol"
 
 
 def test_build_engine_is_cached() -> None:

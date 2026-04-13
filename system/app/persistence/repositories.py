@@ -18,6 +18,7 @@ from app.persistence.models import (
     TradeExecution,
     User,
     UserStrategyProfileModel,
+    WalletSession,
     WorkflowRun,
 )
 from app.schemas.strategy import UserStrategyProfile
@@ -30,8 +31,14 @@ class FollowedSourceRecord:
     user_id: str
     channel_name: str
     channel_url: str | None
+    chat_id: str | None = None
     status: str = "pending"
     scraper_subscription_id: str | None = None
+    profile_job_id: str | None = None
+    suggested_conviction: str | None = None
+    profile_summary: dict | None = None
+    last_profile_requested_at: str | None = None
+    profiled_at: str | None = None
     registered_at: str | None = None
     unsubscribed_at: str | None = None
 
@@ -127,6 +134,23 @@ class PositionEventRecord:
 
 
 @dataclass
+class WalletSessionRecord:
+    user_id: str
+    logged_in: bool
+    account_id: str | None = None
+    account_name: str | None = None
+    login_type: str | None = None
+    wallet_evm_address: str | None = None
+    wallet_sol_address: str | None = None
+    wallet_xlayer_address: str | None = None
+    policy: dict | None = None
+    onboarding_phase: str | None = None
+    onboarding_email: str | None = None
+    chat_id: str | None = None
+    last_synced_at: str | None = None
+
+
+@dataclass
 class TelegramNotificationRecord:
     user_id: str
     chat_id: str
@@ -149,6 +173,8 @@ class FollowedSourceRepository(Protocol):
     def get_by_source_id(self, source_id: str) -> FollowedSourceRecord | None: ...
 
     def get_by_channel_name(self, user_id: str, channel_name: str) -> FollowedSourceRecord | None: ...
+
+    def get_pending_confirmation(self, user_id: str) -> FollowedSourceRecord | None: ...
 
     def save(self, record: FollowedSourceRecord) -> FollowedSourceRecord: ...
 
@@ -187,6 +213,12 @@ class TelegramNotificationRepository(Protocol):
     def save(self, record: TelegramNotificationRecord) -> TelegramNotificationRecord: ...
 
 
+class WalletSessionRepository(Protocol):
+    def get(self, user_id: str) -> WalletSessionRecord | None: ...
+
+    def save(self, record: WalletSessionRecord) -> WalletSessionRecord: ...
+
+
 class InMemoryStrategyProfileRepository:
     def __init__(self) -> None:
         self._profiles: dict[str, UserStrategyProfile] = {}
@@ -209,6 +241,12 @@ class InMemoryFollowedSourceRepository:
     def get_by_channel_name(self, user_id: str, channel_name: str) -> FollowedSourceRecord | None:
         for record in self._records.values():
             if record.user_id == user_id and record.channel_name == channel_name:
+                return record
+        return None
+
+    def get_pending_confirmation(self, user_id: str) -> FollowedSourceRecord | None:
+        for record in self._records.values():
+            if record.user_id == user_id and record.status == "awaiting_confirmation":
                 return record
         return None
 
@@ -321,6 +359,18 @@ class InMemoryPositionEventRepository:
         return stored
 
 
+class InMemoryWalletSessionRepository:
+    def __init__(self) -> None:
+        self._records: dict[str, WalletSessionRecord] = {}
+
+    def get(self, user_id: str) -> WalletSessionRecord | None:
+        return self._records.get(user_id)
+
+    def save(self, record: WalletSessionRecord) -> WalletSessionRecord:
+        self._records[record.user_id] = record
+        return record
+
+
 class InMemoryTelegramNotificationRepository:
     def __init__(self) -> None:
         self._records: list[TelegramNotificationRecord] = []
@@ -346,8 +396,11 @@ class _SQLAlchemyRepositoryBase:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self.session_factory = session_factory
 
+    def _get_user(self, session: Session, telegram_user_id: str) -> User | None:
+        return session.execute(select(User).where(User.telegram_user_id == telegram_user_id)).scalar_one_or_none()
+
     def _ensure_user(self, session: Session, telegram_user_id: str) -> User:
-        user = session.execute(select(User).where(User.telegram_user_id == telegram_user_id)).scalar_one_or_none()
+        user = self._get_user(session, telegram_user_id)
         if user is None:
             user = User(telegram_user_id=telegram_user_id)
             session.add(user)
@@ -412,8 +465,14 @@ class SQLAlchemyFollowedSourceRepository(_SQLAlchemyRepositoryBase):
                 user_id=user.telegram_user_id if user else "",
                 channel_name=model.channel_name,
                 channel_url=model.channel_url,
+                chat_id=model.chat_id,
                 status=model.status,
                 scraper_subscription_id=model.scraper_subscription_id,
+                profile_job_id=model.profile_job_id,
+                suggested_conviction=model.suggested_conviction,
+                profile_summary=model.profile_summary_json,
+                last_profile_requested_at=model.last_profile_requested_at.isoformat() if model.last_profile_requested_at else None,
+                profiled_at=model.profiled_at.isoformat() if model.profiled_at else None,
                 registered_at=model.registered_at.isoformat() if model.registered_at else None,
                 unsubscribed_at=model.unsubscribed_at.isoformat() if model.unsubscribed_at else None,
             )
@@ -435,8 +494,46 @@ class SQLAlchemyFollowedSourceRepository(_SQLAlchemyRepositoryBase):
                 user_id=user_id,
                 channel_name=model.channel_name,
                 channel_url=model.channel_url,
+                chat_id=model.chat_id,
                 status=model.status,
                 scraper_subscription_id=model.scraper_subscription_id,
+                profile_job_id=model.profile_job_id,
+                suggested_conviction=model.suggested_conviction,
+                profile_summary=model.profile_summary_json,
+                last_profile_requested_at=model.last_profile_requested_at.isoformat() if model.last_profile_requested_at else None,
+                profiled_at=model.profiled_at.isoformat() if model.profiled_at else None,
+                registered_at=model.registered_at.isoformat() if model.registered_at else None,
+                unsubscribed_at=model.unsubscribed_at.isoformat() if model.unsubscribed_at else None,
+            )
+
+    def get_pending_confirmation(self, user_id: str) -> FollowedSourceRecord | None:
+        with self.session_factory() as session:
+            user = session.execute(select(User).where(User.telegram_user_id == user_id)).scalar_one_or_none()
+            if user is None:
+                return None
+            model = (
+                session.execute(
+                    select(FollowedSource).where(
+                        FollowedSource.user_id == user.id,
+                        FollowedSource.status == "awaiting_confirmation",
+                    )
+                ).scalar_one_or_none()
+            )
+            if model is None:
+                return None
+            return FollowedSourceRecord(
+                source_id=model.source_id,
+                user_id=user_id,
+                channel_name=model.channel_name,
+                channel_url=model.channel_url,
+                chat_id=model.chat_id,
+                status=model.status,
+                scraper_subscription_id=model.scraper_subscription_id,
+                profile_job_id=model.profile_job_id,
+                suggested_conviction=model.suggested_conviction,
+                profile_summary=model.profile_summary_json,
+                last_profile_requested_at=model.last_profile_requested_at.isoformat() if model.last_profile_requested_at else None,
+                profiled_at=model.profiled_at.isoformat() if model.profiled_at else None,
                 registered_at=model.registered_at.isoformat() if model.registered_at else None,
                 unsubscribed_at=model.unsubscribed_at.isoformat() if model.unsubscribed_at else None,
             )
@@ -456,8 +553,14 @@ class SQLAlchemyFollowedSourceRepository(_SQLAlchemyRepositoryBase):
             model.user_id = user.id
             model.channel_name = record.channel_name
             model.channel_url = record.channel_url
+            model.chat_id = record.chat_id
             model.status = record.status
             model.scraper_subscription_id = record.scraper_subscription_id
+            model.profile_job_id = record.profile_job_id
+            model.suggested_conviction = record.suggested_conviction
+            model.profile_summary_json = record.profile_summary
+            model.last_profile_requested_at = _parse_datetime(record.last_profile_requested_at)
+            model.profiled_at = _parse_datetime(record.profiled_at)
             model.registered_at = _parse_datetime(record.registered_at)
             model.unsubscribed_at = _parse_datetime(record.unsubscribed_at)
             session.commit()
@@ -718,6 +821,57 @@ class SQLAlchemyTelegramNotificationRepository(_SQLAlchemyRepositoryBase):
                 sent_at=_parse_datetime(record.sent_at),
             )
             session.add(model)
+            session.commit()
+            return record
+
+
+class SQLAlchemyWalletSessionRepository(_SQLAlchemyRepositoryBase):
+    def get(self, user_id: str) -> WalletSessionRecord | None:
+        with self.session_factory() as session:
+            user = self._get_user(session, user_id)
+            if user is None:
+                return None
+            model = session.execute(select(WalletSession).where(WalletSession.user_id == user.id)).scalar_one_or_none()
+            if model is None:
+                return None
+            policy = model.policy_json or {}
+            return WalletSessionRecord(
+                user_id=user_id,
+                logged_in=model.logged_in,
+                account_id=model.account_id,
+                account_name=model.account_name,
+                login_type=model.login_type,
+                wallet_evm_address=model.wallet_evm_address,
+                wallet_sol_address=model.wallet_sol_address,
+                wallet_xlayer_address=model.wallet_xlayer_address,
+                policy=policy,
+                onboarding_phase=policy.get("onboarding_phase"),
+                onboarding_email=policy.get("onboarding_email"),
+                chat_id=policy.get("chat_id"),
+                last_synced_at=model.last_synced_at.isoformat() if model.last_synced_at else None,
+            )
+
+    def save(self, record: WalletSessionRecord) -> WalletSessionRecord:
+        with self.session_factory() as session:
+            user = self._ensure_user(session, record.user_id)
+            model = session.execute(select(WalletSession).where(WalletSession.user_id == user.id)).scalar_one_or_none()
+            if model is None:
+                model = WalletSession(user_id=user.id)
+                session.add(model)
+            model.account_id = record.account_id
+            model.account_name = record.account_name
+            model.login_type = record.login_type
+            model.logged_in = record.logged_in
+            model.wallet_evm_address = record.wallet_evm_address
+            model.wallet_sol_address = record.wallet_sol_address
+            model.wallet_xlayer_address = record.wallet_xlayer_address
+            model.policy_json = {
+                **(record.policy or {}),
+                "onboarding_phase": record.onboarding_phase,
+                "onboarding_email": record.onboarding_email,
+                "chat_id": record.chat_id,
+            }
+            model.last_synced_at = _parse_datetime(record.last_synced_at) or datetime.now(UTC)
             session.commit()
             return record
 

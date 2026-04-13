@@ -6,8 +6,10 @@ from app.adapters.scraper.client import ScraperClient, ScraperRegistrationReques
 from app.adapters.telegram.client import TelegramClient
 from app.agents.decision import DecisionAgent
 from app.agents.exit import ExitAgent
+from app.agents.follow_profiling import FollowProfilingAgent
 from app.agents.parsing import ParsingAgent
 from app.agents.wallet_command import WalletCommandAgent
+from app.agents.wallet_onboarding import WalletOnboardingAgent
 from app.persistence.repositories import (
     SQLAlchemyFollowedSourceRepository,
     SQLAlchemyPositionEventRepository,
@@ -17,10 +19,12 @@ from app.persistence.repositories import (
     SQLAlchemyStrategyProfileRepository,
     SQLAlchemyTelegramNotificationRepository,
     SQLAlchemyTradeExecutionRepository,
+    SQLAlchemyWalletSessionRepository,
     SQLAlchemyWorkflowRunRepository,
 )
 from app.persistence.session import build_session_factory, create_all
 from app.services.exit_flow import ExitGraphService
+from app.services.follow_command import FollowCommandService
 from app.services.notifications import NotificationService, RecordingTelegramClient
 from app.services.position_monitor import PositionMonitorService
 from app.services.readiness import RuntimeReadinessService
@@ -28,6 +32,7 @@ from app.services.signal_intake import SignalIntakeGraphService
 from app.services.source_registry import SourceRegistryService
 from app.services.strategy_profiles import StrategyProfileService
 from app.services.telegram_commands import TelegramCommandRouter
+from app.services.wallet_onboarding import WalletOnboardingService
 from app.services.webhook_intake import WebhookIntakeService
 from app.services.workflow_runtime import (
     ExitWorkflowQueueService,
@@ -38,6 +43,14 @@ from app.services.workflow_runtime import (
 
 
 class NoopScraperClient(ScraperClient):
+    def request_channel_profile(self, request) -> dict:
+        return {
+            "ok": True,
+            "profile_job_id": f"profile:{request.source_id}",
+            "channel_name": request.channel_name,
+            "status": "profiling_pending",
+        }
+
     def register_channel(self, request: ScraperRegistrationRequest) -> dict:
         return {
             "ok": True,
@@ -54,6 +67,7 @@ class NoopScraperClient(ScraperClient):
 class ApplicationRuntime:
     strategy_profiles: StrategyProfileService
     source_registry: SourceRegistryService
+    follow_command_service: FollowCommandService
     telegram_router: TelegramCommandRouter
     webhook_intake: WebhookIntakeService
     signal_queue: SignalWorkflowQueueService
@@ -84,12 +98,22 @@ def build_application_runtime(
     execution_repo = SQLAlchemyTradeExecutionRepository(session_factory)
     position_event_repo = SQLAlchemyPositionEventRepository(session_factory)
     notification_repo = SQLAlchemyTelegramNotificationRepository(session_factory)
+    wallet_session_repo = SQLAlchemyWalletSessionRepository(session_factory)
 
     strategy_profiles = StrategyProfileService(strategy_repo)
     source_registry = SourceRegistryService(source_repo, scraper_client or NoopScraperClient())
     notification_service = NotificationService(
         telegram_client=telegram_client or RecordingTelegramClient(),
         notification_repository=notification_repo,
+    )
+    follow_command_service = FollowCommandService(
+        repository=source_repo,
+        scraper_client=scraper_client or NoopScraperClient(),
+        source_registry=source_registry,
+        profiling_agent=FollowProfilingAgent(),
+        notification_service=notification_service,
+        callback_url=callback_url.replace("/messages", "/follow-profile"),
+        callback_secret=callback_secret,
     )
 
     signal_graph = SignalIntakeGraphService(
@@ -127,6 +151,11 @@ def build_application_runtime(
         callback_url=callback_url,
         callback_secret=callback_secret,
         wallet_command_agent=WalletCommandAgent(),
+        wallet_onboarding_service=WalletOnboardingService(
+            agent=WalletOnboardingAgent(),
+            repository=wallet_session_repo,
+        ),
+        follow_command_service=follow_command_service,
     )
     webhook_intake = WebhookIntakeService(message_repo)
     readiness = RuntimeReadinessService()
@@ -134,6 +163,7 @@ def build_application_runtime(
     return ApplicationRuntime(
         strategy_profiles=strategy_profiles,
         source_registry=source_registry,
+        follow_command_service=follow_command_service,
         telegram_router=telegram_router,
         webhook_intake=webhook_intake,
         signal_queue=signal_queue,

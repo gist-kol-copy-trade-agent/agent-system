@@ -258,6 +258,171 @@ Deterministic.
 
 Persist raw command event if needed.
 
+## 4. Follow Channel
+
+## 4.1 Goal
+
+Analyze a Telegram source before enabling live follow.
+
+The user should receive:
+
+- a cold-start profile based on the last 7 days of messages,
+- a suggested conviction level for the source,
+- a confirmation prompt asking whether the bot should follow the channel.
+
+Only after user confirmation should the bot register the channel with the scraper.
+
+## 4.2 Flow
+
+### Step 1: Validate Source Input
+Deterministic.
+
+Inputs:
+
+- `/follow <channel_link_or_name>`
+
+Rules:
+
+- validate basic Telegram link / username format
+- normalize source identifier
+- reject obviously malformed inputs early
+
+Persist:
+
+- source record in `profiling_pending` state
+
+### Step 2: Request Historical Messages
+Deterministic.
+
+Model call: no
+
+Action:
+
+- call scraper historical fetch API for the most recent 7 days
+
+Persist:
+
+- profiling request id
+- fetch status
+
+### Step 3: Receive Historical Samples
+Deterministic intake, async workflow handoff.
+
+Model call: no
+
+Inputs:
+
+- historical message callback from scraper
+
+Persist:
+
+- sampled messages
+- profiling job record
+
+### Step 4: Extract Trade Calls from Historical Messages
+Model call: yes
+
+Agent:
+
+- `Parsing Agent` or a dedicated `Follow Profiling Agent`
+
+Tools exposed:
+
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
+
+Goal:
+
+- identify messages that are real trade calls
+- extract token clues and timestamps from historical samples
+
+Persist:
+
+- extracted historical calls
+- extraction confidence
+
+### Step 5: Evaluate Post-Call Market Outcome
+Mostly deterministic.
+
+Model call: no by default
+
+Tools:
+
+- `okx-dex-market`
+- `onchainos market kline`
+
+Method:
+
+- for each extracted call, estimate call-time price
+- compare with market behavior within the following 24 hours
+- derive simple retrospective metrics
+
+Persist:
+
+- per-call evaluation
+- aggregate metrics
+
+### Step 6: Profile Channel Quality
+Model call: yes
+
+Agent:
+
+- `Follow Profiling Agent`
+
+Tools exposed:
+
+- none by default beyond provided profiling inputs
+
+Expected output:
+
+- channel summary
+- suggested conviction
+- major-vs-regular asset bias
+- note on confidence / limitations
+
+Persist:
+
+- channel profiling summary
+
+### Step 7: Ask User for Confirmation
+Deterministic.
+
+Output to user:
+
+- sample size
+- extracted call count
+- estimated win-rate or 1-day follow-through
+- suggested conviction
+- explicit question: follow this channel or not
+
+Persist:
+
+- follow confirmation pending state
+
+### Step 8: Register Channel After Confirmation
+Deterministic.
+
+Model call: no
+
+Action:
+
+- call scraper `POST /register/channel_name`
+
+Persist:
+
+- scraper subscription id
+- source state = `active`
+
+### Step 9: Final Response
+Deterministic.
+
+Output:
+
+- channel active status
+- normalized source id
+- suggested conviction used during decision
+
 ### Step 2: Interpret Wallet Intent
 Model call: yes
 

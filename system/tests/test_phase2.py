@@ -1,24 +1,29 @@
 from app.agents.wallet_command import WalletCommandAgent, WalletCommandOutput
+from app.agents.wallet_onboarding import WalletOnboardingAgent
 from app.agents.decision import DecisionAgent
 from app.agents.enrichment import EnrichmentAgent
 from app.agents.exit import ExitAgent
+from app.agents.follow_profiling import FollowProfilingAgent
 from app.agents.parsing import ParsingAgent
-from app.adapters.scraper.client import ScraperClient, ScraperRegistrationRequest
+from app.adapters.scraper.client import ScraperClient, ScraperHistoricalProfileRequest, ScraperRegistrationRequest
 from app.persistence.repositories import (
     InMemoryFollowedSourceRepository,
     InMemoryPositionRepository,
     InMemorySourceMessageRepository,
     InMemoryStrategyProfileRepository,
     InMemoryWorkflowRunRepository,
+    InMemoryWalletSessionRepository,
     PositionRecord,
 )
 from app.schemas.commands import CommandEnvelope
-from app.schemas.webhook import ScraperWebhookPayload
+from app.schemas.webhook import ScraperFollowProfileWebhookPayload, ScraperWebhookPayload
 from app.services.signal_intake import SignalIntakeGraphService
 from app.services.exit_flow import ExitGraphService
+from app.services.follow_command import FollowCommandService
 from app.services.source_registry import SourceRegistryService
 from app.services.strategy_profiles import StrategyProfileService
 from app.services.telegram_commands import TelegramCommandRouter
+from app.services.wallet_onboarding import WalletOnboardingService
 from app.services.webhook_intake import WebhookAuthError, WebhookIntakeService
 from app.services.workflow_runtime import (
     ExitWorkflowQueueService,
@@ -30,6 +35,14 @@ from app.services.workflow_runtime import (
 
 
 class FakeScraperClient(ScraperClient):
+    def request_channel_profile(self, request: ScraperHistoricalProfileRequest) -> dict:
+        return {
+            "ok": True,
+            "profile_job_id": f"profile:{request.source_id}",
+            "channel_name": request.channel_name,
+            "status": "profiling_pending",
+        }
+
     def register_channel(self, request: ScraperRegistrationRequest) -> dict:
         return {
             "ok": True,
@@ -67,6 +80,52 @@ class FakeWalletCommandBackend:
             message="History loaded via wallet command agent.",
             payload={"events": [], "skill": "okx-agentic-wallet"},
         )
+
+
+class FakeWalletOnboardingBackend:
+    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str):
+        text = raw_text.strip()
+        if phase == "start":
+            return type(
+                "Obj",
+                (),
+                {
+                    "message": "You need to log in with your email first before adding a wallet. What is your email address?",
+                    "payload": {"logged_in": False},
+                    "model_dump": lambda self=None: {
+                        "phase": "awaiting_email",
+                        "message": "You need to log in with your email first before adding a wallet. What is your email address?",
+                        "payload": {"logged_in": False},
+                    },
+                },
+            )()
+        if phase == "awaiting_email":
+            return type(
+                "Obj",
+                (),
+                {
+                    "message": f"A verification code has been sent to {text}. Please check your inbox and tell me the code.",
+                    "payload": {"logged_in": False, "email": text},
+                    "model_dump": lambda self=None: {
+                        "phase": "awaiting_otp",
+                        "message": f"A verification code has been sent to {text}. Please check your inbox and tell me the code.",
+                        "payload": {"logged_in": False, "email": text},
+                    },
+                },
+            )()
+        return type(
+            "Obj",
+            (),
+            {
+                "message": "Wallet created successfully!\nEVM Address: 0xabc\nSolana Address: So1abc",
+                "payload": {"logged_in": True, "wallet_evm_address": "0xabc", "wallet_sol_address": "So1abc"},
+                "model_dump": lambda self=None: {
+                    "phase": "ready",
+                    "message": "Wallet created successfully!\nEVM Address: 0xabc\nSolana Address: So1abc",
+                    "payload": {"logged_in": True, "wallet_evm_address": "0xabc", "wallet_sol_address": "So1abc"},
+                },
+            },
+        )()
 
 
 class FakeExitBackend:
@@ -113,6 +172,20 @@ class FakeExitExecutionRunner:
         }
 
 
+class FakeFollowProfilingBackend:
+    def profile(self, *, user_id: str, source_id: str, channel_name: str, messages):
+        return {
+            "extracted_call_count": 6,
+            "evaluated_call_count": 5,
+            "win_rate_1d_pct": 60.0,
+            "median_return_1d_pct": 8.5,
+            "average_return_1d_pct": 6.2,
+            "suggested_conviction": "medium",
+            "profiling_summary": f"{channel_name} has decent 1-day follow-through.",
+            "notable_patterns": ["Strong on majors", "Noisy on microcaps"],
+        }
+
+
 def build_router() -> TelegramCommandRouter:
     strategy_repo = InMemoryStrategyProfileRepository()
     source_repo = InMemoryFollowedSourceRepository()
@@ -124,6 +197,19 @@ def build_router() -> TelegramCommandRouter:
         callback_url="https://bot.example.com/webhooks/scraper/messages",
         callback_secret="secret",
         wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
+        wallet_onboarding_service=WalletOnboardingService(
+            agent=WalletOnboardingAgent(backend=FakeWalletOnboardingBackend()),
+            repository=InMemoryWalletSessionRepository(),
+        ),
+        follow_command_service=FollowCommandService(
+            repository=source_repo,
+            scraper_client=FakeScraperClient(),
+            source_registry=source_service,
+            profiling_agent=FollowProfilingAgent(backend=FakeFollowProfilingBackend()),
+            notification_service=None,
+            callback_url="https://bot.example.com/webhooks/scraper/follow-profile",
+            callback_secret="secret",
+        ),
     )
 
 
@@ -149,21 +235,94 @@ def test_follow_and_stop_commands() -> None:
     router = build_router()
     follow = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/follow alpha_kol"))
     assert follow.ok is True
-    assert follow.payload["status"] == "active"
-    assert follow.payload["scraper_subscription_id"] == "sub:u1:alpha_kol"
+    assert follow.payload["status"] == "profiling_pending"
+    assert follow.payload["profile_job_id"] == "profile:u1:alpha_kol"
 
     stop = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/stop alpha_kol"))
     assert stop.ok is True
     assert stop.payload["status"] == "inactive"
 
 
-def test_start_and_status_route_via_wallet_command_agent() -> None:
+def test_follow_profile_callback_then_yes_confirms_follow() -> None:
+    source_repo = InMemoryFollowedSourceRepository()
+    strategy_service = StrategyProfileService(InMemoryStrategyProfileRepository())
+    scraper_client = FakeScraperClient()
+    source_service = SourceRegistryService(source_repo, scraper_client)
+    follow_service = FollowCommandService(
+        repository=source_repo,
+        scraper_client=scraper_client,
+        source_registry=source_service,
+        profiling_agent=FollowProfilingAgent(backend=FakeFollowProfilingBackend()),
+        notification_service=None,
+        callback_url="https://bot.example.com/webhooks/scraper/follow-profile",
+        callback_secret="secret",
+    )
+    router = TelegramCommandRouter(
+        strategy_profiles=strategy_service,
+        source_registry=source_service,
+        callback_url="https://bot.example.com/webhooks/scraper/messages",
+        callback_secret="secret",
+        wallet_command_agent=WalletCommandAgent(backend=FakeWalletCommandBackend()),
+        wallet_onboarding_service=WalletOnboardingService(
+            agent=WalletOnboardingAgent(backend=FakeWalletOnboardingBackend()),
+            repository=InMemoryWalletSessionRepository(),
+        ),
+        follow_command_service=follow_service,
+    )
+
+    initial = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/follow alpha_kol"))
+    assert initial.payload["status"] == "profiling_pending"
+
+    accepted = follow_service.accept_profile_callback(
+        ScraperFollowProfileWebhookPayload(
+            event_id="evt-follow-1",
+            event_type="telegram.follow_profile.ready",
+            source_id="u1:alpha_kol",
+            user_id="u1",
+            channel_name="alpha_kol",
+            channel_url="https://t.me/alpha_kol",
+            profile_job_id="profile:u1:alpha_kol",
+            messages=[
+                {
+                    "message_id": "m1",
+                    "message_text": "BUY ETH NOW",
+                    "message_timestamp": "2026-01-01T00:00:00Z",
+                    "message_url": "https://t.me/alpha_kol/1",
+                }
+            ],
+            raw_payload={},
+        )
+    )
+    assert accepted.status == "awaiting_confirmation"
+    assert accepted.suggested_conviction == "medium"
+
+    confirm = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="yes"))
+    assert confirm.ok is True
+    assert confirm.payload["status"] == "active"
+    assert confirm.payload["scraper_subscription_id"] == "sub:u1:alpha_kol"
+
+
+def test_start_email_otp_wallet_onboarding_flow() -> None:
     router = build_router()
 
     start = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/start"))
     assert start.ok is True
     assert start.command == "start"
-    assert start.payload["skill"] == "okx-agentic-wallet"
+    assert "email address" in start.message.lower()
+
+    email = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="user@example.com"))
+    assert email.ok is True
+    assert "verification code" in email.message.lower()
+
+    otp = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="123456"))
+    assert otp.ok is True
+    assert "Wallet created successfully!" in otp.message
+    assert otp.payload["phase"] == "ready"
+    assert otp.payload["wallet_evm_address"] == "0xabc"
+
+
+def test_status_route_via_wallet_command_agent() -> None:
+    router = build_router()
 
     status = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="/status"))
     assert status.ok is True

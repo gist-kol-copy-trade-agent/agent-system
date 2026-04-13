@@ -34,6 +34,16 @@ def _send_trade_notification_task(
     telegram_client.send_message(chat_id=chat_id, text=text)
 
 
+@task
+def _send_generic_notification_task(
+    telegram_client: TelegramClient,
+    *,
+    chat_id: str,
+    text: str,
+) -> None:
+    telegram_client.send_message(chat_id=chat_id, text=text)
+
+
 class NotificationService:
     def __init__(
         self,
@@ -134,6 +144,38 @@ class NotificationService:
                     related_position_id=related_position_id,
                     notification_type=f"progress:{stage}",
                     message_text=formatted_text,
+                    send_status=send_status,
+                    sent_at=sent_at,
+                )
+            )
+
+    def send_generic_notification(
+        self,
+        *,
+        user_id: str,
+        chat_id: str,
+        notification_type: str,
+        message_text: str,
+        related_signal_id: str | None = None,
+        related_position_id: str | None = None,
+    ) -> None:
+        send_status = "sent"
+        sent_at = utc_now_iso()
+        try:
+            _resolve_task_result(_send_generic_notification_task(self.telegram_client, chat_id=chat_id, text=message_text))
+        except Exception:
+            send_status = "failed"
+            sent_at = None
+
+        if self.notification_repository is not None:
+            self.notification_repository.save(
+                TelegramNotificationRecord(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    related_signal_id=related_signal_id,
+                    related_position_id=related_position_id,
+                    notification_type=notification_type,
+                    message_text=message_text,
                     send_status=send_status,
                     sent_at=sent_at,
                 )
