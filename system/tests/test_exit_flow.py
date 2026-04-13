@@ -129,7 +129,7 @@ class FakePositionTrackerBackend:
         self.liquidity_usd = liquidity_usd
         self.quote_price_impact_pct = quote_price_impact_pct
 
-    def track_position(self, *, position_snapshot, strategy_profile):
+    def track_position(self, *, position_snapshot, strategy_profile, resolved_wallet_address=None, wallet_context_hints=None):
         return {
             "position_tracking_snapshot": {
                 "symbol": position_snapshot["symbol"],
@@ -147,7 +147,16 @@ class FakePositionTrackerBackend:
             }
         }
 
-    def track_portfolio(self, *, user_id, bot_positions, strategy_profile=None):
+    def track_portfolio(
+        self,
+        *,
+        user_id,
+        bot_positions,
+        strategy_profile=None,
+        resolved_wallet_address=None,
+        target_chain=None,
+        wallet_context_hints=None,
+    ):
         return {
             "portfolio_tracking_snapshot": {
                 "wallet_recent_pnl": [],

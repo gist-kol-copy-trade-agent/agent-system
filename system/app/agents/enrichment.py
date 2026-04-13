@@ -84,6 +84,7 @@ class EnrichmentBackend(Protocol):
         parsed_signal: dict[str, Any],
         resolved_asset: dict[str, Any],
         strategy_profile: dict[str, Any],
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -115,6 +116,7 @@ class LangChainEnrichmentBackend:
         parsed_signal: dict[str, Any],
         resolved_asset: dict[str, Any],
         strategy_profile: dict[str, Any],
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         agent = self._get_agent()
         result = agent.invoke(
@@ -126,6 +128,7 @@ class LangChainEnrichmentBackend:
                             parsed_signal=parsed_signal,
                             resolved_asset=resolved_asset,
                             strategy_profile=strategy_profile,
+                            wallet_context_hints=wallet_context_hints,
                         ),
                     }
                 ]
@@ -134,6 +137,7 @@ class LangChainEnrichmentBackend:
                 parsed_signal=parsed_signal,
                 resolved_asset=resolved_asset,
                 strategy_profile=strategy_profile,
+                wallet_context_hints=wallet_context_hints,
             ),
         )
         return self._extract_output(result).model_dump()
@@ -151,6 +155,8 @@ class LangChainEnrichmentBackend:
             "You are an enrichment agent for an on-chain copy-trading bot. "
             "Your job is to gather and normalize trading context before any decision step. "
             "Load OKX OnchainOS skills on demand and use run_onchainos_readonly to collect wallet, market, risk, and optional overlay data. "
+            "For wallet context, first use wallet_context_hints from runtime: if resolved_wallet_address is present for the target chain, use it. "
+            "If wallet_context_hints are missing or stale, you must resolve via okx-agentic-wallet using wallet status and wallet addresses before continuing. "
             "For market context, you must load okx-dex-market and gather both spot/quote data and a recent kline window suitable for TA. "
             "The returned market_snapshot must always include kline_window as a non-empty list when market data is available. "
             "Return structured snapshots only. Do not make the trade decision."
@@ -170,16 +176,19 @@ class LangChainEnrichmentBackend:
         parsed_signal: dict[str, Any],
         resolved_asset: dict[str, Any],
         strategy_profile: dict[str, Any],
+        wallet_context_hints: dict[str, Any] | None,
     ) -> str:
         payload = {
             "parsed_signal": parsed_signal,
             "resolved_asset": resolved_asset,
             "strategy_profile": strategy_profile,
+            "wallet_context_hints": wallet_context_hints or {},
         }
         return (
             "Collect complete decision input context for this trade candidate.\n"
             "Use OKX skills and run_onchainos_readonly to gather wallet, market, risk, and optional overlay data.\n"
-            "For wallet data, load okx-agentic-wallet.\n"
+            "For wallet data, load okx-agentic-wallet and prioritize resolved wallet address hints when available.\n"
+            "If wallet hints are missing or stale, resolve the current account via wallet status + wallet addresses.\n"
             "For market data, load okx-dex-market and explicitly call the market commands needed to populate market_snapshot, including market kline.\n"
             "For regular-token risk data, load okx-security and token intelligence context as needed.\n"
             "Do not omit market_snapshot.kline_window. If you cannot obtain it, return an empty list rather than fabricating candles.\n"
@@ -193,12 +202,14 @@ class LangChainEnrichmentBackend:
         parsed_signal: dict[str, Any],
         resolved_asset: dict[str, Any],
         strategy_profile: dict[str, Any],
+        wallet_context_hints: dict[str, Any] | None,
     ) -> EnrichmentAgentRuntimeContext:
         return EnrichmentAgentRuntimeContext(
             user_id=str(strategy_profile.get("user_id") or "unknown"),
             parsed_signal=parsed_signal,
             resolved_asset=resolved_asset,
             strategy_profile=strategy_profile,
+            wallet_context_hints=wallet_context_hints,
             load_skill_provider=self.skill_registry.load_skill,
             load_reference_provider=self.skill_registry.load_reference,
             readonly_command_provider=self.readonly_runner.run,
@@ -232,9 +243,11 @@ class EnrichmentAgent:
         parsed_signal: dict[str, Any],
         resolved_asset: dict[str, Any],
         strategy_profile: dict[str, Any],
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self.backend.enrich(
             parsed_signal=parsed_signal,
             resolved_asset=resolved_asset,
             strategy_profile=strategy_profile,
+            wallet_context_hints=wallet_context_hints,
         )

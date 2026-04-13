@@ -464,6 +464,21 @@ def build_swap_execution_agent_tools() -> list[Any]:
         return runtime.context.load_reference_provider(skill_name, relative_path)
 
     @tool(parse_docstring=True)
+    def run_onchainos_readonly(
+        command: str,
+        runtime: ToolRuntime[SwapExecutionAgentRuntimeContext] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a read-only onchainos CLI command for wallet/session fallback checks.
+
+        Args:
+            command: Full onchainos command string. Side-effecting commands are not allowed here.
+        """
+
+        if runtime is None or runtime.context is None:
+            return {"ok": False, "error": "missing runtime context"}
+        return runtime.context.readonly_command_provider(command)
+
+    @tool(parse_docstring=True)
     def run_onchainos_mutating_swap(
         request: dict[str, Any],
         runtime: ToolRuntime[SwapExecutionAgentRuntimeContext] | None = None,
@@ -478,4 +493,4 @@ def build_swap_execution_agent_tools() -> list[Any]:
             return {"ok": False, "error": "missing runtime context"}
         return runtime.context.mutating_swap_provider(request)
 
-    return [load_okx_skill, load_okx_skill_reference, run_onchainos_mutating_swap]
+    return [load_okx_skill, load_okx_skill_reference, run_onchainos_readonly, run_onchainos_mutating_swap]

@@ -28,6 +28,7 @@ class EnrichmentAgentRuntimeContext:
     parsed_signal: JSONDict
     resolved_asset: JSONDict
     strategy_profile: JSONDict
+    wallet_context_hints: JSONDict | None = None
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
     load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
     readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
@@ -82,12 +83,16 @@ class ExitAgentRuntimeContext:
     exit_ta_score_provider: Callable[[], JSONDict] = field(default=lambda: {})
 
 
+@dataclass
 class PositionTrackerAgentRuntimeContext:
     user_id: str
     mode: str
     position_snapshot: JSONDict | None = None
     bot_positions: list[JSONDict] | None = None
     strategy_profile: JSONDict | None = None
+    target_chain: str | None = None
+    resolved_wallet_address: str | None = None
+    wallet_context_hints: JSONDict | None = None
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
     load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
     readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
@@ -98,6 +103,9 @@ class HistoryAgentRuntimeContext:
     user_id: str
     raw_text: str
     time_window: str | None = None
+    target_chain: str | None = None
+    resolved_wallet_address: str | None = None
+    wallet_context_hints: JSONDict | None = None
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
     load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
     readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
@@ -107,6 +115,8 @@ class HistoryAgentRuntimeContext:
 class SwapExecutionAgentRuntimeContext:
     user_id: str
     intent: JSONDict
+    resolved_wallet_address: str | None = None
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
     load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
     mutating_swap_provider: Callable[[JSONDict], JSONDict] = field(default=lambda _request: {})

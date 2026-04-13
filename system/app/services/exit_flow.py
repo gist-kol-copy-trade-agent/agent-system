@@ -19,6 +19,7 @@ from app.persistence.repositories import (
     PositionRepository,
     TradeExecutionRecord,
     TradeExecutionRepository,
+    WalletSessionRepository,
     utc_now_iso,
 )
 from app.policies.exit_policy import DefaultExitPolicyEngine
@@ -27,6 +28,7 @@ from app.schemas.strategy import UserStrategyProfile
 from app.services.onchainos_runner import OnchainOSCommandError, OnchainOSMutatingRunner
 from app.services.notifications import NotificationService
 from app.services.strategy_profiles import StrategyProfileService
+from app.services.wallet_resolution import WalletAddressResolver
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -186,6 +188,7 @@ class ExitGraphService:
         evaluation_repository: PositionExitEvaluationRepository | None = None,
         execution_repository: TradeExecutionRepository | None = None,
         position_event_repository: PositionEventRepository | None = None,
+        wallet_session_repository: WalletSessionRepository | None = None,
         notification_service: NotificationService | None = None,
         execution_runner: ExitExecutionRunner | None = None,
     ) -> None:
@@ -197,6 +200,7 @@ class ExitGraphService:
         self.evaluation_repository = evaluation_repository or _NullPositionExitEvaluationRepository()
         self.execution_repository = execution_repository
         self.position_event_repository = position_event_repository
+        self.wallet_address_resolver = WalletAddressResolver(wallet_session_repository)
         self.notification_service = notification_service
         self.execution_runner = execution_runner or OnchainOSSwapExitExecutionRunner()
         self.swap_execution_agent = swap_execution_agent or SwapExecutionAgent(
@@ -325,11 +329,18 @@ class ExitGraphService:
 
     def _node_load_market_context(self, state: ExitGraphState) -> dict[str, Any]:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
-        trailing_state: TrailingState = state["trailing_state"] or {}  # type: ignore[assignment]
         strategy_profile = state["strategy_profile"] or {}
+        wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
+            user_id=str(state.get("user_id") or position["user_id"]),
+            chain=position["chain"],
+        )
         tracked = self.position_tracker_agent.track_position(
             position_snapshot=position,
             strategy_profile=strategy_profile,
+            resolved_wallet_address=wallet_resolution.wallet_address,
+            wallet_context_hints=self.wallet_address_resolver.get_wallet_hints(
+                user_id=str(state.get("user_id") or position["user_id"])
+            ),
         )
         position_tracking = PositionTrackingSnapshot(**tracked["position_tracking_snapshot"])
         return {
@@ -577,12 +588,17 @@ class ExitGraphService:
         strategy = state["strategy_profile"] or {}
         exit_token = "USDC"
         amount = position["entry_token_amount"] or position["entry_amount_usd"]
+        wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
+            user_id=str(state.get("user_id") or position["user_id"]),
+            chain=position["chain"],
+        )
+        resolved_wallet_address = wallet_resolution.wallet_address or position["wallet_address"]
         execution_request = {
             "asset_lane": position["asset_lane"],
             "position_id": position["position_id"],
             "side": "sell",
             "chain": position["chain"],
-            "wallet_address": position["wallet_address"],
+            "wallet_address": resolved_wallet_address,
             "from_token": position["token_contract_address"] or position["symbol"],
             "to_token": exit_token,
             "readable_amount": str(amount),
@@ -600,7 +616,7 @@ class ExitGraphService:
                 "asset_lane": position["asset_lane"],
                 "side": "sell",
                 "chain": position["chain"],
-                "wallet_address": position["wallet_address"],
+                "wallet_address": resolved_wallet_address,
                 "from_token": position["token_contract_address"] or position["symbol"],
                 "to_token": exit_token,
                 "readable_amount": str(amount),

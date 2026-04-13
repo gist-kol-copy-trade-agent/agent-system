@@ -8,6 +8,7 @@ class FakeEnrichmentBackend:
         parsed_signal,
         resolved_asset,
         strategy_profile,
+        wallet_context_hints=None,
     ):
         if resolved_asset["asset_lane"] == "major":
             return {

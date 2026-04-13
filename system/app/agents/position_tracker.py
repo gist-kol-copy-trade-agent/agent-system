@@ -66,6 +66,8 @@ class PositionTrackerBackend(Protocol):
         *,
         position_snapshot: dict[str, Any],
         strategy_profile: dict[str, Any],
+        resolved_wallet_address: str | None = None,
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def track_portfolio(
@@ -74,6 +76,9 @@ class PositionTrackerBackend(Protocol):
         user_id: str,
         bot_positions: list[dict[str, Any]],
         strategy_profile: dict[str, Any] | None = None,
+        resolved_wallet_address: str | None = None,
+        target_chain: str | None = None,
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -104,6 +109,8 @@ class LangChainPositionTrackerBackend:
         *,
         position_snapshot: dict[str, Any],
         strategy_profile: dict[str, Any],
+        resolved_wallet_address: str | None = None,
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self._invoke(
             mode="position",
@@ -111,10 +118,15 @@ class LangChainPositionTrackerBackend:
             payload={
                 "position_snapshot": position_snapshot,
                 "strategy_profile": strategy_profile,
+                "resolved_wallet_address": resolved_wallet_address,
+                "wallet_context_hints": wallet_context_hints or {},
             },
             position_snapshot=position_snapshot,
             bot_positions=[],
             strategy_profile=strategy_profile,
+            target_chain=str(position_snapshot.get("chain") or ""),
+            resolved_wallet_address=resolved_wallet_address,
+            wallet_context_hints=wallet_context_hints,
         )
 
     def track_portfolio(
@@ -123,6 +135,9 @@ class LangChainPositionTrackerBackend:
         user_id: str,
         bot_positions: list[dict[str, Any]],
         strategy_profile: dict[str, Any] | None = None,
+        resolved_wallet_address: str | None = None,
+        target_chain: str | None = None,
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self._invoke(
             mode="portfolio",
@@ -130,10 +145,16 @@ class LangChainPositionTrackerBackend:
             payload={
                 "bot_positions": bot_positions,
                 "strategy_profile": strategy_profile or {},
+                "resolved_wallet_address": resolved_wallet_address,
+                "target_chain": target_chain,
+                "wallet_context_hints": wallet_context_hints or {},
             },
             position_snapshot=None,
             bot_positions=bot_positions,
             strategy_profile=strategy_profile or {},
+            target_chain=target_chain,
+            resolved_wallet_address=resolved_wallet_address,
+            wallet_context_hints=wallet_context_hints,
         )
 
     def _invoke(
@@ -145,6 +166,9 @@ class LangChainPositionTrackerBackend:
         position_snapshot: dict[str, Any] | None,
         bot_positions: list[dict[str, Any]],
         strategy_profile: dict[str, Any],
+        target_chain: str | None,
+        resolved_wallet_address: str | None,
+        wallet_context_hints: dict[str, Any] | None,
     ) -> dict[str, Any]:
         agent = self._get_agent()
         result = agent.invoke(
@@ -162,6 +186,9 @@ class LangChainPositionTrackerBackend:
                 position_snapshot=position_snapshot,
                 bot_positions=bot_positions,
                 strategy_profile=strategy_profile,
+                target_chain=target_chain,
+                resolved_wallet_address=resolved_wallet_address,
+                wallet_context_hints=wallet_context_hints,
                 load_skill_provider=self.skill_registry.load_skill,
                 load_reference_provider=self.skill_registry.load_reference,
                 readonly_command_provider=self.readonly_runner.run,
@@ -182,6 +209,8 @@ class LangChainPositionTrackerBackend:
             "You are a position tracker agent for an OKX OnchainOS trading bot. "
             "Load okx-dex-market and use run_onchainos_readonly to collect portfolio and token PnL context. "
             "Use onchainos market portfolio-token-pnl and onchainos market portfolio-recent-pnl when available. "
+            "Always prefer resolved_wallet_address from runtime context when present. "
+            "If resolved_wallet_address is missing or stale, load okx-agentic-wallet and resolve active wallet via wallet status + wallet addresses first. "
             "For single-position tracking, also gather current market price and kline data needed for exit monitoring. "
             "Return only the structured schema."
         )
@@ -200,12 +229,14 @@ class LangChainPositionTrackerBackend:
             prefix = (
                 "Refresh current market and PnL tracking context for one open bot-managed position.\n"
                 "Load okx-dex-market and gather current price, kline, liquidity, and per-token pnl snapshot.\n"
+                "Use resolved_wallet_address when present; if missing, resolve wallet via wallet status + wallet addresses.\n"
                 "Return only position_tracking_snapshot.\n"
             )
         else:
             prefix = (
                 "Build a current portfolio tracking snapshot for the user wallet.\n"
                 "Load okx-dex-market and gather portfolio-recent-pnl plus portfolio-token-pnl.\n"
+                "Use resolved_wallet_address when present; if missing, resolve wallet via wallet status + wallet addresses.\n"
                 "Map bot-managed positions to token pnl rows when possible.\n"
                 "Return only portfolio_tracking_snapshot.\n"
             )
@@ -243,8 +274,15 @@ class PositionTrackerAgent:
         *,
         position_snapshot: dict[str, Any],
         strategy_profile: dict[str, Any],
+        resolved_wallet_address: str | None = None,
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self.backend.track_position(position_snapshot=position_snapshot, strategy_profile=strategy_profile)
+        return self.backend.track_position(
+            position_snapshot=position_snapshot,
+            strategy_profile=strategy_profile,
+            resolved_wallet_address=resolved_wallet_address,
+            wallet_context_hints=wallet_context_hints,
+        )
 
     def track_portfolio(
         self,
@@ -252,9 +290,15 @@ class PositionTrackerAgent:
         user_id: str,
         bot_positions: list[dict[str, Any]],
         strategy_profile: dict[str, Any] | None = None,
+        resolved_wallet_address: str | None = None,
+        target_chain: str | None = None,
+        wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self.backend.track_portfolio(
             user_id=user_id,
             bot_positions=bot_positions,
             strategy_profile=strategy_profile,
+            resolved_wallet_address=resolved_wallet_address,
+            target_chain=target_chain,
+            wallet_context_hints=wallet_context_hints,
         )

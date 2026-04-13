@@ -12,7 +12,7 @@ from app.services.wallet_command_flow import WalletCommandGraphService, WalletCo
 
 
 class FakePositionTrackerBackend:
-    def track_position(self, *, position_snapshot, strategy_profile):
+    def track_position(self, *, position_snapshot, strategy_profile, resolved_wallet_address=None, wallet_context_hints=None):
         return {
             "position_tracking_snapshot": {
                 "symbol": position_snapshot["symbol"],
@@ -30,7 +30,16 @@ class FakePositionTrackerBackend:
             }
         }
 
-    def track_portfolio(self, *, user_id, bot_positions, strategy_profile=None):
+    def track_portfolio(
+        self,
+        *,
+        user_id,
+        bot_positions,
+        strategy_profile=None,
+        resolved_wallet_address=None,
+        target_chain=None,
+        wallet_context_hints=None,
+    ):
         return {
             "portfolio_tracking_snapshot": {
                 "wallet_recent_pnl": [{"token": "ETH", "pnl_usd": 12.0, "pnl_pct": 4.0}],
@@ -41,7 +50,16 @@ class FakePositionTrackerBackend:
 
 
 class FakeHistoryBackend:
-    def load_history(self, *, user_id: str, raw_text: str, time_window: str | None):
+    def load_history(
+        self,
+        *,
+        user_id: str,
+        raw_text: str,
+        time_window: str | None,
+        resolved_wallet_address: str | None = None,
+        target_chain: str | None = None,
+        wallet_context_hints: dict | None = None,
+    ):
         return {
             "dex_history_rows": [
                 {

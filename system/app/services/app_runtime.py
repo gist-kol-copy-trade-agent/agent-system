@@ -135,6 +135,7 @@ def build_application_runtime(
         execution_repository=execution_repo,
         position_repository=position_repo,
         position_event_repository=position_event_repo,
+        wallet_session_repository=wallet_session_repo,
         notification_service=notification_service,
     )
     exit_graph = ExitGraphService(
@@ -145,6 +146,7 @@ def build_application_runtime(
         evaluation_repository=position_eval_repo,
         execution_repository=execution_repo,
         position_event_repository=position_event_repo,
+        wallet_session_repository=wallet_session_repo,
         notification_service=notification_service,
     )
 
@@ -168,6 +170,7 @@ def build_application_runtime(
             strategy_profiles=strategy_profiles,
             source_repository=source_repo,
             position_repository=position_repo,
+            wallet_session_repository=wallet_session_repo,
         ),
         wallet_service=WalletService(
             agent=WalletAgent(),

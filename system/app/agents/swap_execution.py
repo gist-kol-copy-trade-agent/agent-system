@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.agents.runtime_context import SwapExecutionAgentRuntimeContext
 from app.config.settings import get_settings
 from app.services.okx_skills import OKXSkillRegistry
+from app.services.onchainos_runner import OnchainOSReadonlyRunner
 from app.tools.langchain_agent_tools import build_swap_execution_agent_tools
 
 
@@ -61,12 +62,16 @@ class LangChainSwapExecutionBackend:
         model: str | None = None,
         tools: list | None = None,
         skill_registry: OKXSkillRegistry | None = None,
+        readonly_runner: OnchainOSReadonlyRunner | None = None,
         mutating_swap_provider=None,
     ) -> None:
         self._agent = None
         self.model = model
         self.tools = tools if tools is not None else build_swap_execution_agent_tools()
         self.skill_registry = skill_registry or OKXSkillRegistry()
+        self.readonly_runner = readonly_runner or OnchainOSReadonlyRunner(
+            timeout_seconds=get_settings().models.timeout_seconds
+        )
         self.mutating_swap_provider = mutating_swap_provider or (lambda request: {"ok": False, "error": "missing swap provider"})
 
     def execute(self, *, intent: dict[str, Any]) -> dict[str, Any]:
@@ -90,6 +95,8 @@ class LangChainSwapExecutionBackend:
             "You are a swap execution agent for an on-chain copy-trading bot. "
             "You receive already validated buy or sell intent after policy approval. "
             "Load okx-dex-swap skill, synthesize the exact execution request, and invoke the bounded swap tool. "
+            "Always use resolved_wallet_address from runtime context when present. "
+            "If wallet address is missing or stale, load okx-agentic-wallet and resolve active wallet via wallet status + wallet addresses first. "
             "Do not change the trade intent or bypass the validated inputs. Output only the structured schema."
         )
         self._agent = create_agent(
@@ -105,6 +112,7 @@ class LangChainSwapExecutionBackend:
         return (
             "Execute this already validated swap intent.\n"
             "Load okx-dex-swap and use the bounded mutating swap tool.\n"
+            "Use resolved_wallet_address from context when available, otherwise resolve via wallet status + wallet addresses.\n"
             + json.dumps(intent, ensure_ascii=True)
         )
 
@@ -112,8 +120,10 @@ class LangChainSwapExecutionBackend:
         return SwapExecutionAgentRuntimeContext(
             user_id=str(intent.get("user_id") or "unknown"),
             intent=intent,
+            resolved_wallet_address=str(intent.get("wallet_address") or "") or None,
             load_skill_provider=self.skill_registry.load_skill,
             load_reference_provider=self.skill_registry.load_reference,
+            readonly_command_provider=self.readonly_runner.run,
             mutating_swap_provider=self.mutating_swap_provider,
         )
 

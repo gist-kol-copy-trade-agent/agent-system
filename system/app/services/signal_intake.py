@@ -18,6 +18,7 @@ from app.persistence.repositories import (
     PositionRepository,
     TradeExecutionRecord,
     TradeExecutionRepository,
+    WalletSessionRepository,
     utc_now_iso,
 )
 from app.policies.trade_policy import DefaultTradePolicyEngine
@@ -27,6 +28,7 @@ from app.services.asset_lanes import AssetLaneClassifier
 from app.services.notifications import NotificationService
 from app.services.onchainos_runner import OnchainOSCommandError, OnchainOSMutatingRunner
 from app.services.strategy_profiles import StrategyProfileService
+from app.services.wallet_resolution import WalletAddressResolver
 from app.tools.ta import TAInput, TATool
 
 try:
@@ -196,6 +198,7 @@ class SignalIntakeGraphService:
         execution_repository: TradeExecutionRepository | None = None,
         position_repository: PositionRepository | None = None,
         position_event_repository: PositionEventRepository | None = None,
+        wallet_session_repository: WalletSessionRepository | None = None,
         notification_service: NotificationService | None = None,
         execution_runner: TradeExecutionRunner | None = None,
     ) -> None:
@@ -209,6 +212,7 @@ class SignalIntakeGraphService:
         self.execution_repository = execution_repository or _NullTradeExecutionRepository()
         self.position_repository = position_repository or _NullPositionRepository()
         self.position_event_repository = position_event_repository or _NullPositionEventRepository()
+        self.wallet_address_resolver = WalletAddressResolver(wallet_session_repository)
         self.notification_service = notification_service
         self.execution_runner = execution_runner or OnchainOSSwapBuyExecutionRunner()
         self.swap_execution_agent = swap_execution_agent or SwapExecutionAgent(
@@ -407,15 +411,31 @@ class SignalIntakeGraphService:
         return {"strategy_profile": profile.model_dump()}
 
     def _node_enrich_context(self, state: TradingGraphState) -> dict[str, Any]:
+        resolved_asset = state["resolved_asset"] or {}
+        wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
+            user_id=str(state.get("request_user_id") or "unknown"),
+            chain=str(resolved_asset.get("target_execution_chain") or "unknown"),
+        )
+        wallet_hints = {
+            **self.wallet_address_resolver.get_wallet_hints(user_id=str(state.get("request_user_id") or "unknown")),
+            **wallet_resolution.to_prompt_hints(),
+        }
         enrichment = self.enrichment_agent.enrich(
             parsed_signal=state["parsed_signal"],
             resolved_asset=state["resolved_asset"],
             strategy_profile=state["strategy_profile"],
+            wallet_context_hints=wallet_hints,
         )
+        wallet_snapshot = dict(enrichment.get("wallet_snapshot") or {})
+        if wallet_resolution.wallet_address:
+            wallet_snapshot["wallet_address"] = wallet_resolution.wallet_address
+        if wallet_snapshot.get("target_chain") is None:
+            wallet_snapshot["target_chain"] = wallet_resolution.chain
+
         market_snapshot = enrichment["market_snapshot"]
         if not isinstance(market_snapshot.get("kline_window"), list) or len(market_snapshot.get("kline_window", [])) == 0:
             return {
-                "wallet_snapshot": enrichment["wallet_snapshot"],
+                "wallet_snapshot": wallet_snapshot,
                 "market_snapshot": market_snapshot,
                 "risk_snapshot": enrichment["risk_snapshot"],
                 "signal_overlay": enrichment.get("signal_overlay"),
@@ -431,7 +451,7 @@ class SignalIntakeGraphService:
                 },
             }
         return {
-            "wallet_snapshot": enrichment["wallet_snapshot"],
+            "wallet_snapshot": wallet_snapshot,
             "market_snapshot": market_snapshot,
             "risk_snapshot": enrichment["risk_snapshot"],
             "signal_overlay": enrichment.get("signal_overlay"),
@@ -586,6 +606,15 @@ class SignalIntakeGraphService:
         decision = state["trade_decision"] or {}
         strategy = state["strategy_profile"] or {}
         wallet = state["wallet_snapshot"] or {}
+        wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
+            user_id=str(state.get("request_user_id") or "unknown"),
+            chain=str(resolved["target_execution_chain"]),
+        )
+        resolved_wallet_address = (
+            wallet_resolution.wallet_address
+            or wallet.get("target_chain_wallet_address")
+            or wallet.get("wallet_address")
+        )
         amount = decision.get("capped_amount_usd") or decision.get("recommended_amount_usd") or 0
         slippage_pct = (
             strategy.get("max_slippage_pct_major")
@@ -599,7 +628,7 @@ class SignalIntakeGraphService:
             "asset_lane": resolved["asset_lane"],
             "side": "buy",
             "chain": resolved["target_execution_chain"],
-            "wallet_address": wallet.get("target_chain_wallet_address") or wallet.get("wallet_address"),
+            "wallet_address": resolved_wallet_address,
             "from_token": "USDC",
             "to_token": to_token,
             "readable_amount": str(amount),

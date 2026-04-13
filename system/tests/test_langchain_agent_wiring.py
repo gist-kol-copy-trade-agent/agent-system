@@ -264,6 +264,7 @@ def test_swap_execution_backend_registers_bound_tools_and_context_schema(monkeyp
     assert {tool.name for tool in kwargs["tools"]} == {
         "load_okx_skill",
         "load_okx_skill_reference",
+        "run_onchainos_readonly",
         "run_onchainos_mutating_swap",
     }
 

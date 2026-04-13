@@ -8,9 +8,10 @@ from app.agents.position_tracker import PositionTrackerAgent
 from app.config.settings import get_settings
 from app.graphs.runtime import build_checkpointer, build_thread_id, invoke_graph
 from app.graphs.state import WalletCommandGraphState
-from app.persistence.repositories import FollowedSourceRepository, PositionRepository
+from app.persistence.repositories import FollowedSourceRepository, PositionRepository, WalletSessionRepository
 from app.schemas.commands import CommandEnvelope
 from app.services.strategy_profiles import StrategyProfileService
+from app.services.wallet_resolution import WalletAddressResolver
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -53,12 +54,14 @@ class WalletCommandGraphService:
         strategy_profiles: StrategyProfileService | None = None,
         source_repository: FollowedSourceRepository | None = None,
         position_repository: PositionRepository | None = None,
+        wallet_session_repository: WalletSessionRepository | None = None,
     ) -> None:
         self.position_tracker_agent = position_tracker_agent or PositionTrackerAgent()
         self.history_agent = history_agent or HistoryAgent()
         self.strategy_profiles = strategy_profiles
         self.source_repository = source_repository
         self.position_repository = position_repository
+        self.wallet_address_resolver = WalletAddressResolver(wallet_session_repository)
         self.durability_mode = get_settings().langgraph.command_durability
         self.graph = self._build_graph()
 
@@ -133,10 +136,19 @@ class WalletCommandGraphService:
 
         if command_name == "portfolio":
             positions = self._list_open_positions(state["user_id"])
+            preferred_chain = self._infer_preferred_chain(positions)
+            wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
+                user_id=state["user_id"],
+                chain=preferred_chain,
+            )
+            wallet_hints = self.wallet_address_resolver.get_wallet_hints(user_id=state["user_id"])
             tracked = self.position_tracker_agent.track_portfolio(
                 user_id=state["user_id"],
                 bot_positions=[self._serialize_position(position) for position in positions],
                 strategy_profile=self._get_strategy_profile(state["user_id"]),
+                resolved_wallet_address=wallet_resolution.wallet_address,
+                target_chain=wallet_resolution.chain,
+                wallet_context_hints=wallet_hints,
             )
             portfolio_tracking = tracked.get("portfolio_tracking_snapshot") or {}
             chain_distribution = self._build_chain_distribution(positions)
@@ -146,6 +158,7 @@ class WalletCommandGraphService:
                     "active_position_count": len(positions),
                     "chain_distribution": chain_distribution,
                     "portfolio_tracking": portfolio_tracking,
+                    "wallet_resolution": wallet_resolution.to_prompt_hints(),
                 }
             )
             position_lines = (
@@ -179,10 +192,19 @@ class WalletCommandGraphService:
         elif command_name == "history":
             closed_positions = [position for position in self._list_all_positions(state["user_id"]) if position.status == "closed"]
             time_window = self._extract_history_window(state["raw_text"])
+            preferred_chain = self._infer_preferred_chain(closed_positions)
+            wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
+                user_id=state["user_id"],
+                chain=preferred_chain,
+            )
+            wallet_hints = self.wallet_address_resolver.get_wallet_hints(user_id=state["user_id"])
             history_snapshot = self.history_agent.load_history(
                 user_id=state["user_id"],
                 raw_text=state["raw_text"],
                 time_window=time_window,
+                resolved_wallet_address=wallet_resolution.wallet_address,
+                target_chain=wallet_resolution.chain,
+                wallet_context_hints=wallet_hints,
             )
             payload.update(
                 {
@@ -190,6 +212,7 @@ class WalletCommandGraphService:
                     "completed_trades": [self._serialize_position(position) for position in closed_positions],
                     "completed_trade_count": len(closed_positions),
                     "win_loss_summary": self._build_win_loss_summary(closed_positions),
+                    "wallet_resolution": wallet_resolution.to_prompt_hints(),
                 }
             )
             recent_lines = (
@@ -248,6 +271,14 @@ class WalletCommandGraphService:
         for position in positions:
             distribution[position.chain] = distribution.get(position.chain, 0) + 1
         return distribution
+
+    @staticmethod
+    def _infer_preferred_chain(positions) -> str:
+        if not positions:
+            return "xlayer"
+        distribution = WalletCommandGraphService._build_chain_distribution(positions)
+        top = sorted(distribution.items(), key=lambda kv: kv[1], reverse=True)[0]
+        return top[0]
 
     @staticmethod
     def _build_win_loss_summary(positions) -> dict[str, int]:

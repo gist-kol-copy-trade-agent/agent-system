@@ -52,6 +52,7 @@ class MissingKlineEnrichmentBackend:
         parsed_signal,
         resolved_asset,
         strategy_profile,
+        wallet_context_hints=None,
     ):
         return {
             "wallet_snapshot": {
