@@ -412,9 +412,27 @@ class SignalIntakeGraphService:
             resolved_asset=state["resolved_asset"],
             strategy_profile=state["strategy_profile"],
         )
+        market_snapshot = enrichment["market_snapshot"]
+        if not isinstance(market_snapshot.get("kline_window"), list) or len(market_snapshot.get("kline_window", [])) == 0:
+            return {
+                "wallet_snapshot": enrichment["wallet_snapshot"],
+                "market_snapshot": market_snapshot,
+                "risk_snapshot": enrichment["risk_snapshot"],
+                "signal_overlay": enrichment.get("signal_overlay"),
+                "trade_decision": {
+                    "asset_lane": state["resolved_asset"]["asset_lane"],
+                    "decision": "block",
+                    "decision_reason_code": "MARKET_KLINE_MISSING",
+                    "confidence": 0.0,
+                    "recommended_amount_usd": 0,
+                    "capped_amount_usd": 0,
+                    "rationale_summary": "Trade blocked because enrichment did not provide market kline data for TA.",
+                    "telegram_summary": "Trade blocked because market kline data was unavailable.",
+                },
+            }
         return {
             "wallet_snapshot": enrichment["wallet_snapshot"],
-            "market_snapshot": enrichment["market_snapshot"],
+            "market_snapshot": market_snapshot,
             "risk_snapshot": enrichment["risk_snapshot"],
             "signal_overlay": enrichment.get("signal_overlay"),
         }
@@ -437,10 +455,26 @@ class SignalIntakeGraphService:
                 "price": market.get("spot_price_usd"),
                 "wallet_ready": (state.get("wallet_snapshot") or {}).get("logged_in"),
                 "risk_scan": risk.get("risk_scan_required"),
+                "kline_points": len(market.get("kline_window") or []),
             },
         )
 
     def _node_compute_ta(self, state: TradingGraphState) -> dict[str, Any]:
+        existing_decision = state.get("trade_decision")
+        if existing_decision and existing_decision.get("decision") == "block":
+            return {
+                "ta_snapshot": {
+                    "asset_lane": state["resolved_asset"]["asset_lane"],
+                    "call_reference_price_usd": None,
+                    "current_price_usd": None,
+                    "price_deviation_pct": None,
+                    "momentum_score": None,
+                    "volatility_score": None,
+                    "liquidity_gate_passed": None,
+                    "ta_score": 0.0,
+                    "ta_summary": "TA skipped because enrichment failed to provide required market kline data.",
+                }
+            }
         resolved: ResolvedAsset = state["resolved_asset"]  # type: ignore[assignment]
         market = state["market_snapshot"] or {}
         strategy = state["strategy_profile"] or {}

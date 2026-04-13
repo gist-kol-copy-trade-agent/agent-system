@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import FollowProfilingAgentRuntimeContext
 from app.config.settings import get_settings
@@ -14,14 +14,16 @@ from app.tools.langchain_agent_tools import build_follow_profiling_agent_tools
 
 
 class FollowProfileOutput(BaseModel):
-    extracted_call_count: int
-    evaluated_call_count: int
-    win_rate_1d_pct: float
-    median_return_1d_pct: float
-    average_return_1d_pct: float
-    suggested_conviction: str
-    profiling_summary: str
-    notable_patterns: list[str] = []
+    extracted_call_count: int = Field(description="Number of historical trade calls extracted from the sampled messages.")
+    evaluated_call_count: int = Field(description="Number of extracted calls that could be retrospectively evaluated with market kline data.")
+    win_rate_1d_pct: float = Field(description="Percentage of evaluated calls that were positive within 1 day after the call.")
+    median_return_1d_pct: float = Field(description="Median 1-day return percentage across evaluated calls.")
+    average_return_1d_pct: float = Field(description="Average 1-day return percentage across evaluated calls.")
+    suggested_conviction: Literal["low", "medium", "high"] = Field(
+        description="Suggested default conviction for following this channel based on retrospective profiling."
+    )
+    profiling_summary: str = Field(description="Short user-facing summary of the channel's retrospective performance.")
+    notable_patterns: list[str] = Field(default_factory=list, description="Notable patterns found during profiling.")
 
 
 class FollowProfilingBackend(Protocol):

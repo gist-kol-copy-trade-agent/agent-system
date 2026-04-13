@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import WalletOnboardingRuntimeContext
 from app.config.settings import get_settings
@@ -13,10 +13,20 @@ from app.services.onchainos_runner import OnchainOSMutatingRunner, OnchainOSRead
 from app.tools.langchain_agent_tools import build_wallet_onboarding_agent_tools
 
 
+class WalletOnboardingPayload(BaseModel):
+    logged_in: bool = Field(description="Whether the wallet is authenticated after this onboarding turn.")
+    email: str | None = Field(default=None, description="Email captured during onboarding, if applicable.")
+    wallet_evm_address: str | None = Field(default=None, description="Primary EVM wallet address after successful onboarding.")
+    wallet_sol_address: str | None = Field(default=None, description="Primary Solana wallet address after successful onboarding.")
+    wallet_xlayer_address: str | None = Field(default=None, description="Primary X Layer wallet address after successful onboarding.")
+
+
 class WalletOnboardingOutput(BaseModel):
-    phase: str
-    message: str
-    payload: dict[str, Any]
+    phase: Literal["start", "awaiting_email", "awaiting_otp", "ready"] = Field(
+        description="Next onboarding phase after handling the current turn."
+    )
+    message: str = Field(description="User-facing onboarding response.")
+    payload: WalletOnboardingPayload = Field(description="Structured onboarding state and wallet details.")
 
 
 class WalletOnboardingBackend(Protocol):

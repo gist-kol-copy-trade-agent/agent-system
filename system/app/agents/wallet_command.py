@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import WalletCommandRuntimeContext
 from app.config.settings import get_settings
@@ -13,11 +13,21 @@ from app.services.okx_skills import OKXSkillRegistry
 from app.tools.langchain_agent_tools import build_wallet_command_agent_tools
 
 
+class WalletCommandPayload(BaseModel):
+    logged_in: bool | None = Field(default=None, description="Whether the wallet is currently authenticated.")
+    skill: str | None = Field(default=None, description="Primary OKX skill used to fulfill the request.")
+    address_count: int | None = Field(default=None, description="Number of chain addresses found, if relevant.")
+    positions: list[dict] = Field(default_factory=list, description="Portfolio positions if the command was portfolio-oriented.")
+    events: list[dict] = Field(default_factory=list, description="Wallet history events if the command was history-oriented.")
+    wallet_address: str | None = Field(default=None, description="Target wallet address if relevant.")
+    account_name: str | None = Field(default=None, description="Wallet account name if relevant.")
+
+
 class WalletCommandOutput(BaseModel):
-    command: str
-    message: str
-    payload: dict
-    summary_mode: str = "deterministic"
+    command: Literal["start", "status", "portfolio", "history"] = Field(description="Wallet command that was handled.")
+    message: str = Field(description="User-facing response message for Telegram.")
+    payload: WalletCommandPayload = Field(description="Structured wallet command result payload.")
+    summary_mode: Literal["deterministic", "agent"] = Field(default="deterministic")
 
 
 class WalletCommandBackend(Protocol):

@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import SwapExecutionAgentRuntimeContext
 from app.config.settings import get_settings
@@ -12,9 +12,37 @@ from app.services.okx_skills import OKXSkillRegistry
 from app.tools.langchain_agent_tools import build_swap_execution_agent_tools
 
 
+class SwapExecutionRequestOutput(BaseModel):
+    asset_lane: str = Field(description="Asset lane of the validated trade intent.")
+    signal_id: str | None = Field(default=None, description="Related signal identifier for buy execution if present.")
+    position_id: str | None = Field(default=None, description="Related position identifier for sell execution if present.")
+    side: str = Field(description="Swap side, buy or sell.")
+    chain: str = Field(description="Execution chain.")
+    wallet_address: str = Field(description="Wallet address used for execution.")
+    from_token: str = Field(description="Token swapped from.")
+    to_token: str = Field(description="Token swapped to.")
+    readable_amount: str = Field(description="Human-readable amount submitted to the swap command.")
+    slippage_pct: float | None = Field(default=None, description="Slippage used for execution if present.")
+
+
+class SwapExecutionResultOutput(BaseModel):
+    signal_id: str | None = Field(default=None, description="Related signal identifier if present.")
+    position_id: str | None = Field(default=None, description="Related position identifier if present.")
+    success: bool = Field(description="Whether the swap execution succeeded.")
+    execution_id: str | None = Field(default=None, description="Execution identifier returned by the runner.")
+    approve_tx_hash: str | None = Field(default=None, description="Approval transaction hash if applicable.")
+    swap_tx_hash: str | None = Field(default=None, description="Swap transaction hash if applicable.")
+    received_token_amount: str | None = Field(default=None, description="Received token amount for buy execution if available.")
+    received_token_symbol: str | None = Field(default=None, description="Received token symbol for buy execution if available.")
+    realized_output_amount: str | None = Field(default=None, description="Realized output amount for sell execution if available.")
+    realized_output_symbol: str | None = Field(default=None, description="Realized output symbol for sell execution if available.")
+    error_code: str | None = Field(default=None, description="Normalized execution error code if the swap failed.")
+    error_message: str | None = Field(default=None, description="Normalized execution error message if the swap failed.")
+
+
 class SwapExecutionOutput(BaseModel):
-    execution_request: dict[str, Any]
-    execution_result: dict[str, Any]
+    execution_request: SwapExecutionRequestOutput = Field(description="Structured execution request actually sent to the runner.")
+    execution_result: SwapExecutionResultOutput = Field(description="Structured execution result returned by the runner.")
 
 
 class SwapExecutionBackend(Protocol):

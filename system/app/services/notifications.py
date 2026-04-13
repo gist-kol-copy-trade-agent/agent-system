@@ -203,6 +203,7 @@ class NotificationService:
                 f"{block('Spot Price', details.get('price', 'n/a'))}\n"
                 f"{block('Wallet Ready', details.get('wallet_ready', 'unknown'))}\n"
                 f"{block('Risk Scan', details.get('risk_scan', 'n/a'))}\n"
+                f"{block('Kline Points', details.get('kline_points', 'n/a'))}\n"
                 "Next: TA scoring and trade decision."
             ),
             "decision": (

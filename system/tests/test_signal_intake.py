@@ -12,6 +12,9 @@ from app.persistence.repositories import (
 from app.services.notifications import NotificationService, RecordingTelegramClient
 from app.services.signal_intake import SignalIntakeGraphService, SignalIntakeRequest
 from app.services.strategy_profiles import StrategyProfileService
+from tests.test_decision_agent import FakeDecisionBackend
+from tests.test_enrichment_agent import FakeEnrichmentBackend
+from tests.test_parsing_agent import FakeParsingBackend
 
 
 class FakeSwapExecutionBackend:
@@ -42,16 +45,65 @@ class FakeSwapExecutionBackend:
         }
 
 
+class MissingKlineEnrichmentBackend:
+    def enrich(
+        self,
+        *,
+        parsed_signal,
+        resolved_asset,
+        strategy_profile,
+    ):
+        return {
+            "wallet_snapshot": {
+                "logged_in": True,
+                "account_id": "acct-1",
+                "account_name": "Test Wallet",
+                "target_chain": resolved_asset["target_execution_chain"],
+                "wallet_address": "0xmajor",
+                "available_balance_usd": 1200.0,
+                "available_balance_token": None,
+                "policy_single_tx_limit_usd": None,
+                "policy_daily_trade_limit_usd": None,
+                "policy_daily_trade_used_usd": None,
+            },
+            "market_snapshot": {
+                "asset_lane": resolved_asset["asset_lane"],
+                "chain": resolved_asset["target_execution_chain"],
+                "spot_price_usd": 3200.0,
+                "market_cap_usd": None,
+                "liquidity_usd": None,
+                "volume_24h_usd": 500000.0,
+                "price_change_24h_pct": 4.2,
+                "kline_window": [],
+                "quote_available": True,
+                "quote_price_impact_pct": 0.4,
+            },
+            "risk_snapshot": {
+                "asset_lane": resolved_asset["asset_lane"],
+                "risk_scan_required": False,
+                "risk_scan_supported": False,
+                "is_risk_token": None,
+                "buy_tax_pct": None,
+                "sell_tax_pct": None,
+                "risk_control_level": None,
+                "token_tags": [],
+                "dev_rug_pull_token_count": None,
+                "dev_create_token_count": None,
+                "top10_hold_percent": None,
+                "lp_burned_percent": None,
+                "creator_address": None,
+                "risk_summary": "No risk scan.",
+            },
+            "signal_overlay": None,
+        }
+
+
 def build_service() -> SignalIntakeGraphService:
     strategy_service = StrategyProfileService(InMemoryStrategyProfileRepository())
     execution_repo = InMemoryTradeExecutionRepository()
     position_repo = InMemoryPositionRepository()
     position_event_repo = InMemoryPositionEventRepository()
     notification_repo = InMemoryTelegramNotificationRepository()
-    from tests.test_decision_agent import FakeDecisionBackend
-    from tests.test_enrichment_agent import FakeEnrichmentBackend
-    from tests.test_parsing_agent import FakeParsingBackend
-
     service = SignalIntakeGraphService(
         parsing_agent=ParsingAgent(backend=FakeParsingBackend()),
         strategy_profiles=strategy_service,
@@ -140,3 +192,35 @@ def test_signal_intake_non_actionable_signal_skips() -> None:
     assert result["trade_decision"]["decision"] == "skip"
     assert result["trade_decision"]["decision_reason_code"] == "NON_ACTIONABLE_SIGNAL"
     assert [item["stage"] for item in result["execution_trace"]] == ["parse"]
+
+
+def test_signal_intake_blocks_when_enrichment_does_not_return_kline_window() -> None:
+    strategy_service = StrategyProfileService(InMemoryStrategyProfileRepository())
+    service = SignalIntakeGraphService(
+        parsing_agent=ParsingAgent(backend=FakeParsingBackend()),
+        strategy_profiles=strategy_service,
+        enrichment_agent=EnrichmentAgent(backend=MissingKlineEnrichmentBackend()),
+        decision_agent=DecisionAgent(backend=FakeDecisionBackend()),
+        swap_execution_agent=SwapExecutionAgent(backend=FakeSwapExecutionBackend()),
+        execution_repository=InMemoryTradeExecutionRepository(),
+        position_repository=InMemoryPositionRepository(),
+        position_event_repository=InMemoryPositionEventRepository(),
+        notification_service=NotificationService(
+            telegram_client=RecordingTelegramClient(),
+            notification_repository=InMemoryTelegramNotificationRepository(),
+        ),
+    )
+
+    result = service.run(
+        SignalIntakeRequest(
+            user_id="u1",
+            source_id="src1",
+            message_id="sig-major-missing-kline",
+            message_text="Buy ETH now on X Layer. Entry around 3200.",
+        )
+    )
+
+    assert result["trade_decision"]["decision"] == "block"
+    assert result["trade_decision"]["decision_reason_code"] == "MARKET_KLINE_MISSING"
+    assert result["policy_gate_result"]["action"] == "block"
+    assert result["execution_result"] is None
