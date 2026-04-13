@@ -725,13 +725,14 @@ Required skill:
 Flow:
 
 1. load completed bot-managed trades from DB
-2. call `HistoryAgent`
-3. agent loads `okx-dex-market`
-4. agent gathers:
-   - `onchainos market portfolio-dex-history`
-5. merge wallet DEX history with local completed bot-managed trades
-6. apply optional time filter
-7. render compact history summary
+2. deterministically derive query window (`begin_ms/end_ms`) from command argument (`7d`, `30d`, or default window from DB)
+3. deterministically derive target chains from completed trades in DB (deduplicated)
+4. call `HistoryAgent`
+5. agent loads `okx-dex-market`
+6. agent gathers:
+   - `onchainos market portfolio-dex-history` per derived chain using deterministic `begin_ms/end_ms`
+7. merge wallet DEX history with local completed bot-managed trades
+8. render compact history summary
 
 ## 10. Tool Calling Policy Summary
 

@@ -103,7 +103,9 @@ class HistoryAgentRuntimeContext:
     user_id: str
     raw_text: str
     time_window: str | None = None
-    target_chain: str | None = None
+    target_chains: list[str] | None = None
+    begin_ms: int | None = None
+    end_ms: int | None = None
     resolved_wallet_address: str | None = None
     wallet_context_hints: JSONDict | None = None
     load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")

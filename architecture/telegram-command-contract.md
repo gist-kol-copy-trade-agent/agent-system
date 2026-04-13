@@ -353,14 +353,18 @@ Show completed trade history and source-level performance summary.
 ## Behavior
 
 1. read completed bot-managed trades from DB
-2. call `HistoryAgent`
-3. load `okx-dex-market`
-4. gather:
-   - `onchainos market portfolio-dex-history`
-5. apply optional time filter
-6. merge wallet DEX history with local completed bot-managed trades
-7. compute summary stats
-8. return compact history report
+2. derive deterministic query window:
+   - `/history 7d` => `begin = now - 7d`, `end = now`
+   - `/history 30d` => `begin = now - 30d`, `end = now`
+   - `/history` => `begin = earliest closed trade timestamp in DB` (fallback `now - 30d`), `end = now`
+3. derive deterministic target chains from completed bot-managed trades in DB (deduplicated)
+4. call `HistoryAgent`
+5. load `okx-dex-market`
+6. gather:
+   - `onchainos market portfolio-dex-history` per target chain with deterministic `begin/end`
+7. merge wallet DEX history with local completed bot-managed trades
+8. compute summary stats
+9. return compact history report
 
 ## Output
 
@@ -381,7 +385,7 @@ Show completed trade history and source-level performance summary.
 
 ## Goal
 
-Show bot readiness and operating state.
+Show wallet readiness status only.
 
 ## Accepted Forms
 
@@ -394,18 +398,13 @@ Show bot readiness and operating state.
 1. invoke `WalletAgent`
 2. load `okx-agentic-wallet`
 3. check wallet status
-4. check strategy profile existence
-5. count followed sources
-6. count active positions
-7. return system summary
+4. return wallet status summary
 
 ## Output
 
 - wallet status
-- operating mode
-- strategy profile status
-- followed source count
-- active position count
+- wallet account context (if available)
+- wallet addresses (if available)
 
 ## State Mutation
 
@@ -414,7 +413,7 @@ Show bot readiness and operating state.
 ## Model Usage
 
 - required for `WalletAgent` wallet status reads
-- deterministic code still owns strategy/source/position counts and final response rendering
+- deterministic layer only normalizes and returns the wallet payload
 
 ## 11. Suggested Response Style
 

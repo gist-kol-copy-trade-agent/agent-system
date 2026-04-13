@@ -106,8 +106,10 @@ class FakeHistoryBackend:
         user_id: str,
         raw_text: str,
         time_window: str | None,
+        target_chains: list[str],
+        begin_ms: int,
+        end_ms: int,
         resolved_wallet_address: str | None = None,
-        target_chain: str | None = None,
         wallet_context_hints: dict | None = None,
     ):
         return {

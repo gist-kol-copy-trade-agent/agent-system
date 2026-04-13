@@ -32,3 +32,10 @@ Quick start with local Postgres:
 ```bash
 docker compose up -d postgres
 ```
+
+Operational docs:
+
+- Runbook: `RUNBOOK.md`
+- Env template: `.env.example`
+- Container build: `Dockerfile`
+- Runtime stack: `docker-compose.yml`

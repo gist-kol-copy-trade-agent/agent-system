@@ -50,16 +50,29 @@ class FakePositionTrackerBackend:
 
 
 class FakeHistoryBackend:
+    def __init__(self) -> None:
+        self.last_call: dict | None = None
+
     def load_history(
         self,
         *,
         user_id: str,
         raw_text: str,
         time_window: str | None,
+        target_chains: list[str],
+        begin_ms: int,
+        end_ms: int,
         resolved_wallet_address: str | None = None,
-        target_chain: str | None = None,
         wallet_context_hints: dict | None = None,
     ):
+        self.last_call = {
+            "user_id": user_id,
+            "raw_text": raw_text,
+            "time_window": time_window,
+            "target_chains": target_chains,
+            "begin_ms": begin_ms,
+            "end_ms": end_ms,
+        }
         return {
             "dex_history_rows": [
                 {
@@ -123,9 +136,10 @@ def build_service() -> WalletCommandGraphService:
             closed_at="2026-01-02T00:00:00+00:00",
         )
     )
+    history_backend = FakeHistoryBackend()
     return WalletCommandGraphService(
         position_tracker_agent=PositionTrackerAgent(backend=FakePositionTrackerBackend()),
-        history_agent=HistoryAgent(backend=FakeHistoryBackend()),
+        history_agent=HistoryAgent(backend=history_backend),
         strategy_profiles=strategy_profiles,
         source_repository=source_repo,
         position_repository=position_repo,
@@ -154,4 +168,6 @@ def test_wallet_command_flow_history() -> None:
     assert state["command_name"] == "history"
     assert state["response_payload"]["completed_trade_count"] == 1
     assert len(state["response_payload"]["dex_history_snapshot"]["dex_history_rows"]) == 1
+    assert state["response_payload"]["history_query"]["target_chains"] == ["ethereum"]
+    assert state["response_payload"]["history_query"]["end_ms"] > state["response_payload"]["history_query"]["begin_ms"]
     assert "DEX history rows" in state["response_message"]

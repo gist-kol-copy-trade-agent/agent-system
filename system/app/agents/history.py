@@ -33,8 +33,10 @@ class HistoryBackend(Protocol):
         user_id: str,
         raw_text: str,
         time_window: str | None,
+        target_chains: list[str],
+        begin_ms: int,
+        end_ms: int,
         resolved_wallet_address: str | None = None,
-        target_chain: str | None = None,
         wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
@@ -67,8 +69,10 @@ class LangChainHistoryBackend:
         user_id: str,
         raw_text: str,
         time_window: str | None,
+        target_chains: list[str],
+        begin_ms: int,
+        end_ms: int,
         resolved_wallet_address: str | None = None,
-        target_chain: str | None = None,
         wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         agent = self._get_agent()
@@ -81,8 +85,10 @@ class LangChainHistoryBackend:
                             "Load wallet DEX history for this history request.\n"
                             "Use okx-dex-market and call portfolio-dex-history.\n"
                             f"Request: {raw_text}\n"
+                            f"target_chains={target_chains}\n"
+                            f"begin_ms={begin_ms}\n"
+                            f"end_ms={end_ms}\n"
                             f"resolved_wallet_address={resolved_wallet_address}\n"
-                            f"target_chain={target_chain}\n"
                             f"wallet_context_hints={json.dumps(wallet_context_hints or {}, ensure_ascii=True)}"
                         ),
                     }
@@ -92,7 +98,9 @@ class LangChainHistoryBackend:
                 user_id=user_id,
                 raw_text=raw_text,
                 time_window=time_window,
-                target_chain=target_chain,
+                target_chains=target_chains,
+                begin_ms=begin_ms,
+                end_ms=end_ms,
                 resolved_wallet_address=resolved_wallet_address,
                 wallet_context_hints=wallet_context_hints,
                 load_skill_provider=self.skill_registry.load_skill,
@@ -117,7 +125,8 @@ class LangChainHistoryBackend:
             "Load okx-dex-market and use run_onchainos_readonly to gather wallet DEX transaction history. "
             "Always prefer resolved_wallet_address from runtime context. "
             "If it is missing or stale, load okx-agentic-wallet and resolve active wallet via wallet status + wallet addresses first. "
-            "Prefer onchainos market portfolio-dex-history. "
+            "For each chain in target_chains, call onchainos market portfolio-dex-history with deterministic begin_ms/end_ms. "
+            "Merge all rows across chains into one result list. "
             "Return only the structured schema."
         )
         self._agent = create_agent(
@@ -158,15 +167,19 @@ class HistoryAgent:
         user_id: str,
         raw_text: str,
         time_window: str | None,
+        target_chains: list[str],
+        begin_ms: int,
+        end_ms: int,
         resolved_wallet_address: str | None = None,
-        target_chain: str | None = None,
         wallet_context_hints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self.backend.load_history(
             user_id=user_id,
             raw_text=raw_text,
             time_window=time_window,
+            target_chains=target_chains,
+            begin_ms=begin_ms,
+            end_ms=end_ms,
             resolved_wallet_address=resolved_wallet_address,
-            target_chain=target_chain,
             wallet_context_hints=wallet_context_hints,
         )

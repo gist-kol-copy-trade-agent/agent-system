@@ -19,5 +19,56 @@ services:
       timeout: 5s
       retries: 10
 
+  app-http:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: okx-agent-http
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      OKX_AGENT_PERSISTENCE__DATABASE_URL: ${OKX_AGENT_PERSISTENCE__DATABASE_URL:-postgresql+psycopg://postgres:postgres@postgres:5432/okx_agent}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["python", "-m", "app.workers.http_server"]
+
+  app-telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: okx-agent-telegram
+    restart: unless-stopped
+    profiles: ["telegram"]
+    env_file:
+      - .env
+    environment:
+      OKX_AGENT_PERSISTENCE__DATABASE_URL: ${OKX_AGENT_PERSISTENCE__DATABASE_URL:-postgresql+psycopg://postgres:postgres@postgres:5432/okx_agent}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.telegram_polling"]
+
+  app-exit-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: okx-agent-exit-monitor
+    restart: unless-stopped
+    profiles: ["monitor"]
+    env_file:
+      - .env
+    environment:
+      OKX_AGENT_PERSISTENCE__DATABASE_URL: ${OKX_AGENT_PERSISTENCE__DATABASE_URL:-postgresql+psycopg://postgres:postgres@postgres:5432/okx_agent}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.exit_monitor"]
+
 volumes:
   okx_agent_postgres_data:

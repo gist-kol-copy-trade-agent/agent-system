@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.agents.history import HistoryAgent
@@ -192,18 +193,24 @@ class WalletCommandGraphService:
         elif command_name == "history":
             closed_positions = [position for position in self._list_all_positions(state["user_id"]) if position.status == "closed"]
             time_window = self._extract_history_window(state["raw_text"])
-            preferred_chain = self._infer_preferred_chain(closed_positions)
+            time_range = self._resolve_history_time_range(closed_positions=closed_positions, time_window=time_window)
+            target_chains = self._resolve_history_target_chains(closed_positions=closed_positions)
+            preferred_chain = target_chains[0]
             wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
                 user_id=state["user_id"],
                 chain=preferred_chain,
             )
             wallet_hints = self.wallet_address_resolver.get_wallet_hints(user_id=state["user_id"])
+            wallet_hints["history_target_chains"] = target_chains
+            wallet_hints["history_time_range"] = {"begin_ms": time_range["begin_ms"], "end_ms": time_range["end_ms"]}
             history_snapshot = self.history_agent.load_history(
                 user_id=state["user_id"],
                 raw_text=state["raw_text"],
                 time_window=time_window,
+                target_chains=target_chains,
+                begin_ms=time_range["begin_ms"],
+                end_ms=time_range["end_ms"],
                 resolved_wallet_address=wallet_resolution.wallet_address,
-                target_chain=wallet_resolution.chain,
                 wallet_context_hints=wallet_hints,
             )
             payload.update(
@@ -212,6 +219,11 @@ class WalletCommandGraphService:
                     "completed_trades": [self._serialize_position(position) for position in closed_positions],
                     "completed_trade_count": len(closed_positions),
                     "win_loss_summary": self._build_win_loss_summary(closed_positions),
+                    "history_query": {
+                        "target_chains": target_chains,
+                        "begin_ms": time_range["begin_ms"],
+                        "end_ms": time_range["end_ms"],
+                    },
                     "wallet_resolution": wallet_resolution.to_prompt_hints(),
                 }
             )
@@ -228,6 +240,7 @@ class WalletCommandGraphService:
                 "Summary\n"
                 f"- Completed trades: `{len(closed_positions)}`\n"
                 f"- Win/Loss: `{payload.get('win_loss_summary')}`\n"
+                f"- Query chains: `{', '.join(target_chains)}`\n"
                 f"- DEX history rows: `{len((history_snapshot or {}).get('dex_history_rows') or [])}`\n\n"
                 "Recent Trades\n"
                 + "\n".join(recent_lines)
@@ -264,6 +277,41 @@ class WalletCommandGraphService:
         if len(parts) == 2:
             return parts[1].strip()
         return None
+
+    @staticmethod
+    def _resolve_history_target_chains(*, closed_positions) -> list[str]:
+        chains: list[str] = []
+        seen: set[str] = set()
+        for position in closed_positions:
+            chain = str(position.chain or "").strip().lower()
+            if not chain or chain in seen:
+                continue
+            seen.add(chain)
+            chains.append(chain)
+        if not chains:
+            return ["xlayer"]
+        return chains
+
+    @staticmethod
+    def _resolve_history_time_range(*, closed_positions, time_window: str | None) -> dict[str, int]:
+        end_dt = datetime.now(timezone.utc)
+        cleaned = (time_window or "").strip().lower()
+        if cleaned == "7d":
+            begin_dt = end_dt - timedelta(days=7)
+        elif cleaned == "30d":
+            begin_dt = end_dt - timedelta(days=30)
+        else:
+            closed_timestamps: list[datetime] = []
+            for position in closed_positions:
+                value = position.closed_at or position.opened_at
+                if not value:
+                    continue
+                try:
+                    closed_timestamps.append(datetime.fromisoformat(value.replace("Z", "+00:00")))
+                except ValueError:
+                    continue
+            begin_dt = min(closed_timestamps) if closed_timestamps else (end_dt - timedelta(days=30))
+        return {"begin_ms": int(begin_dt.timestamp() * 1000), "end_ms": int(end_dt.timestamp() * 1000)}
 
     @staticmethod
     def _build_chain_distribution(positions) -> dict[str, int]:
