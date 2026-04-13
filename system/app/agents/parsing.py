@@ -10,7 +10,7 @@ from app.agents.runtime_context import ParsingAgentRuntimeContext
 from app.services.onchainos_runner import OnchainOSReadonlyRunner
 from app.services.okx_skills import OKXSkillRegistry
 from app.schemas.domain import ParsedSignal
-from app.config.settings import get_settings
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.tools.langchain_agent_tools import build_parsing_agent_tools
 
 
@@ -108,6 +108,7 @@ class LangChainParsingBackend:
     def _get_agent(self):
         if self._agent is not None:
             return self._agent
+        ensure_openai_runtime_env()
 
         try:
             from langchain.agents import create_agent

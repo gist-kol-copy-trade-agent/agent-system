@@ -7,7 +7,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import HistoryAgentRuntimeContext
-from app.config.settings import get_settings
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.services.onchainos_runner import OnchainOSReadonlyRunner
 from app.services.okx_skills import OKXSkillRegistry
 from app.tools.langchain_agent_tools import build_history_agent_tools
@@ -105,6 +105,7 @@ class LangChainHistoryBackend:
     def _get_agent(self):
         if self._agent is not None:
             return self._agent
+        ensure_openai_runtime_env()
         try:
             from langchain.agents import create_agent
             from langchain.agents.structured_output import ToolStrategy
@@ -120,7 +121,7 @@ class LangChainHistoryBackend:
             "Return only the structured schema."
         )
         self._agent = create_agent(
-            model=self.model or get_settings().models.summary_model,
+            model=self.model or get_settings().models.history_model,
             tools=self.tools,
             system_prompt=system_prompt,
             context_schema=HistoryAgentRuntimeContext,

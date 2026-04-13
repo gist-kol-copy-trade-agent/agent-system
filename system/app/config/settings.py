@@ -1,17 +1,32 @@
 from functools import lru_cache
 from typing import Literal
+import os
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ModelSettings(BaseModel):
-    parsing_model: str = "openai:gpt-5-mini"
-    decision_model: str = "openai:gpt-5"
-    exit_model: str = "openai:gpt-5-mini"
-    summary_model: str = "openai:gpt-5-mini"
+    parsing_model: str = "openai:gpt-5.3-mini"
+    enrichment_model: str = "openai:gpt-5.4"
+    decision_model: str = "openai:gpt-5.4"
+    exit_model: str = "openai:gpt-5.4"
+    swap_execution_model: str = "openai:gpt-5.4"
+    follow_profiling_model: str = "openai:gpt-5.4"
+    wallet_model: str = "openai:gpt-5.3-mini"
+    position_tracker_model: str = "openai:gpt-5.3-mini"
+    history_model: str = "openai:gpt-5.3-mini"
+    trade_style_model: str = "openai:gpt-5.3-mini"
+    summary_model: str = "openai:gpt-5.3-mini"
     timeout_seconds: int = 30
     max_retries: int = 2
+
+
+class OpenAISettings(BaseModel):
+    api_key: str | None = None
+    base_url: str | None = None
+    organization: str | None = None
+    project: str | None = None
 
 
 class LangGraphSettings(BaseModel):
@@ -45,6 +60,7 @@ class AppSettings(BaseSettings):
 
     environment: Literal["development", "staging", "production"] = "development"
     timezone: str = "Asia/Ho_Chi_Minh"
+    openai: OpenAISettings = Field(default_factory=OpenAISettings)
     models: ModelSettings = Field(default_factory=ModelSettings)
     langgraph: LangGraphSettings = Field(default_factory=LangGraphSettings)
     wallet: WalletSettings = Field(default_factory=WalletSettings)
@@ -55,3 +71,17 @@ class AppSettings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     return AppSettings()
+
+
+def ensure_openai_runtime_env(settings: AppSettings | None = None) -> None:
+    resolved = settings or get_settings()
+    api_key = resolved.openai.api_key or os.getenv("OPENAI_API_KEY")
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+
+    if resolved.openai.base_url:
+        os.environ["OPENAI_BASE_URL"] = resolved.openai.base_url
+    if resolved.openai.organization:
+        os.environ["OPENAI_ORG_ID"] = resolved.openai.organization
+    if resolved.openai.project:
+        os.environ["OPENAI_PROJECT_ID"] = resolved.openai.project

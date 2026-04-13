@@ -6,7 +6,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-from app.config.settings import get_settings
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.schemas.strategy import StrategyProfilePatch
 
 
@@ -58,6 +58,7 @@ class LangChainTradeStyleOverrideBackend:
     def _get_agent(self):
         if self._agent is not None:
             return self._agent
+        ensure_openai_runtime_env()
         try:
             from langchain.agents import create_agent
             from langchain.agents.structured_output import ToolStrategy
@@ -72,7 +73,7 @@ class LangChainTradeStyleOverrideBackend:
             "Output only the structured schema."
         )
         self._agent = create_agent(
-            model=self.model or get_settings().models.summary_model,
+            model=self.model or get_settings().models.trade_style_model,
             tools=[],
             system_prompt=system_prompt,
             response_format=ToolStrategy(TradeStyleOverrideOutput),

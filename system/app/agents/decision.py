@@ -7,7 +7,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from app.agents.runtime_context import DecisionAgentRuntimeContext
-from app.config.settings import get_settings
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.tools.langchain_agent_tools import build_decision_agent_tools
 
 
@@ -102,6 +102,7 @@ class LangChainDecisionBackend:
     def _get_agent(self):
         if self._agent is not None:
             return self._agent
+        ensure_openai_runtime_env()
 
         try:
             from langchain.agents import create_agent

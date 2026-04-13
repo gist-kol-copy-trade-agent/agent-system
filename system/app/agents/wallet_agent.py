@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import WalletAgentRuntimeContext
-from app.config.settings import get_settings
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.services.okx_skills import OKXSkillRegistry
 from app.services.onchainos_runner import OnchainOSMutatingRunner, OnchainOSReadonlyRunner
 from app.tools.langchain_agent_tools import build_wallet_agent_tools
@@ -78,6 +78,7 @@ class LangChainWalletBackend:
     def _get_agent(self):
         if self._agent is not None:
             return self._agent
+        ensure_openai_runtime_env()
         from langchain.agents import create_agent
         from langchain.agents.structured_output import ToolStrategy
 
@@ -93,7 +94,7 @@ class LangChainWalletBackend:
             "Return only the structured schema."
         )
         self._agent = create_agent(
-            model=self.model or get_settings().models.summary_model,
+            model=self.model or get_settings().models.wallet_model,
             tools=self.tools,
             system_prompt=system_prompt,
             context_schema=WalletAgentRuntimeContext,

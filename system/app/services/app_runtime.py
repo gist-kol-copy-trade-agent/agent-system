@@ -26,6 +26,7 @@ from app.persistence.repositories import (
     SQLAlchemyWorkflowRunRepository,
 )
 from app.persistence.session import build_session_factory, create_all
+from app.config.settings import ensure_openai_runtime_env
 from app.services.exit_flow import ExitGraphService
 from app.services.follow_command import FollowCommandService
 from app.services.notifications import NotificationService, RecordingTelegramClient
@@ -91,6 +92,7 @@ def build_application_runtime(
     scraper_client: ScraperClient | None = None,
     telegram_client: TelegramClient | None = None,
 ) -> ApplicationRuntime:
+    ensure_openai_runtime_env()
     create_all()
     session_factory = build_session_factory()
 

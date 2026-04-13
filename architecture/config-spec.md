@@ -26,6 +26,7 @@ out of prompts and out of hardcoded business logic.
 ```yaml
 environment:
 models:
+openai:
 langgraph:
 telegram:
 scraper:
@@ -51,13 +52,35 @@ environment:
 
 ```yaml
 models:
-  parsing_model: openai:gpt-5-mini
-  decision_model: openai:gpt-5
-  exit_model: openai:gpt-5-mini
-  summary_model: openai:gpt-5-mini
+  parsing_model: openai:gpt-5.3-mini
+  enrichment_model: openai:gpt-5.4
+  decision_model: openai:gpt-5.4
+  exit_model: openai:gpt-5.4
+  swap_execution_model: openai:gpt-5.4
+  follow_profiling_model: openai:gpt-5.4
+  wallet_model: openai:gpt-5.3-mini
+  position_tracker_model: openai:gpt-5.3-mini
+  history_model: openai:gpt-5.3-mini
+  trade_style_model: openai:gpt-5.3-mini
+  summary_model: openai:gpt-5.3-mini
   timeout_seconds: 30
   max_retries: 2
 ```
+
+## 5.1 OpenAI Provider
+
+```yaml
+openai:
+  api_key: ${OPENAI_API_KEY}
+  base_url: null
+  organization: null
+  project: null
+```
+
+Accepted env var forms in runtime:
+
+- `OPENAI_API_KEY` (direct provider default)
+- `OKX_AGENT_OPENAI__API_KEY` (nested app config)
 
 ## 6. LangGraph Runtime
 

@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from app.agents.runtime_context import FollowProfilingAgentRuntimeContext
-from app.config.settings import get_settings
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.services.okx_skills import OKXSkillRegistry
 from app.services.onchainos_runner import OnchainOSReadonlyRunner
 from app.tools.langchain_agent_tools import build_follow_profiling_agent_tools
@@ -98,6 +98,7 @@ class LangChainFollowProfilingBackend:
     def _get_agent(self):
         if self._agent is not None:
             return self._agent
+        ensure_openai_runtime_env()
         try:
             from langchain.agents import create_agent
             from langchain.agents.structured_output import ToolStrategy
@@ -112,7 +113,7 @@ class LangChainFollowProfilingBackend:
             "Output only the structured profiling schema."
         )
         self._agent = create_agent(
-            model=self.model or get_settings().models.parsing_model,
+            model=self.model or get_settings().models.follow_profiling_model,
             tools=self.tools,
             system_prompt=system_prompt,
             context_schema=FollowProfilingAgentRuntimeContext,
