@@ -1,0 +1,376 @@
+# Core Agent Architecture
+
+## 1. Design Goals
+
+The core agent must:
+
+- reason well enough to parse noisy Telegram KOL calls,
+- use tools selectively and with bounded context,
+- survive retries, crashes, and partial failures,
+- keep trading actions deterministic after the decision boundary,
+- maintain a clean separation between agent state and business persistence.
+
+## 2. LangChain / LangGraph Positioning
+
+Based on the LangChain docs:
+
+- `create_agent` is the right abstraction for the standard model-tools loop.
+- LangGraph is the right runtime for durable execution, checkpoints, thread-scoped state, and recovery.
+- middleware is the right place for context engineering, dynamic prompt shaping, and tool filtering.
+- runtime context is the right place for dependency injection.
+- short-term memory belongs in graph state and checkpointer-backed threads.
+- long-term memory belongs in a store, not in the model prompt by default.
+
+For this product, the recommended architecture is:
+
+- LangChain agent(s) for bounded reasoning tasks.
+- LangGraph state graph for orchestration and failure recovery.
+- Application services for OKX skill execution, TA calculation, Telegram IO, and persistence.
+
+The product also has two execution lanes:
+
+- `major asset lane`: `BTC/ETH/SOL`, execute on `X Layer`, simplified analysis
+- `regular token lane`: full pipeline on the resolved signal chain
+
+## 3. High-Level Topology
+
+```text
+Telegram/Webhook
+  -> Signal Intake Graph
+      -> Parsing Agent
+      -> Deterministic Resolver + Enrichment Nodes
+      -> Decision Agent
+      -> Deterministic Policy Gate
+      -> Execution Node
+      -> Persistence + Notification
+
+Position Monitor Scheduler
+  -> Exit Evaluation Graph
+      -> Market Refresh Nodes
+      -> Exit Decision Agent
+      -> Deterministic Exit Gate
+      -> Execution Node
+      -> Persistence + Notification
+
+User Command Router
+  -> Command-specific Graphs / Handlers
+      -> Portfolio / History / Follow / Stop / Status
+```
+
+## 4. Recommended Agent Partitioning
+
+Do not use one monolithic agent for all responsibilities.
+
+Use three bounded agent roles:
+
+### 4.1 Parsing Agent
+Purpose:
+
+- classify Telegram message type,
+- extract structured trade intent,
+- normalize ambiguous language into a fixed schema.
+
+The parsing agent should not execute trades.
+
+### 4.2 Decision Agent
+Purpose:
+
+- synthesize parsed signal, market data, security data, wallet state, and TA outputs,
+- produce a structured trade decision recommendation,
+- explain why a trade should be executed, skipped, or blocked.
+
+The decision agent should not directly call raw execution tools.
+
+### 4.3 Exit Agent
+Purpose:
+
+- interpret follow-up KOL messages and market conditions,
+- recommend whether an active position should be exited,
+- output a structured exit decision.
+
+The exit agent should not directly mutate portfolio state.
+
+## 5. Why Not a Single Always-On General Agent
+
+A single unrestricted agent would create avoidable failure modes:
+
+- too many tools in context,
+- higher risk of wrong tool selection,
+- harder debugging,
+- weaker auditability,
+- unsafe trade execution paths.
+
+The LangChain docs emphasize context engineering and dynamic tool availability. This product should use that aggressively.
+
+## 6. Graph-Level Architecture
+
+## 6.1 Primary Graph: Signal Intake and Trade Execution
+
+Recommended node sequence:
+
+1. `ingest_signal`
+2. `parse_signal_agent`
+3. `validate_parse`
+4. `classify_asset_lane`
+5. `resolve_target_asset`
+6. `load_wallet_context`
+7. `fetch_market_context`
+8. `compute_ta`
+9. `fetch_optional_signal_overlay`
+10. `run_conditional_security_checks`
+11. `decision_agent`
+12. `apply_policy_gate`
+13. `execute_trade`
+14. `persist_trade_result`
+15. `notify_telegram`
+
+## 6.2 Secondary Graph: Position Monitoring and Exit
+
+Recommended node sequence:
+
+1. `load_position`
+2. `refresh_market_context`
+3. `refresh_ta`
+4. `check_kol_exit_signal`
+5. `exit_decision_agent`
+6. `apply_exit_policy_gate`
+7. `execute_exit`
+8. `persist_exit_result`
+9. `notify_telegram`
+
+## 6.3 Command Graphs
+
+Keep command flows simple and mostly deterministic:
+
+- `/start` -> wallet onboarding graph
+- `/trade-style` -> strategy profile command graph
+- `/follow` -> source registration graph
+- `/stop` -> source pause graph
+- `/portfolio` -> portfolio summary graph
+- `/history` -> local history + optional analytics graph
+- `/status` -> readiness graph
+
+## 7. Where the Model Should Be Called
+
+The model should only be called at ambiguity-heavy steps:
+
+- Telegram message classification and extraction
+- decision synthesis
+- exit decision synthesis
+- optional user-facing summary generation
+
+The model should not be the primary decision maker for:
+
+- wallet authentication status,
+- token contract resolution after deterministic search results exist,
+- TA math,
+- security verdict interpretation,
+- price impact thresholds,
+- risk cap enforcement,
+- execution eligibility.
+
+It also should not decide whether a token is in the major-asset allowlist. That is a deterministic product rule.
+
+## 8. Tool Exposure Strategy
+
+## 8.1 Tools Exposed to Parsing Agent
+
+Expose only lightweight read tools:
+
+- `search_token_candidates`
+- `get_token_metadata`
+- `get_chain_support`
+
+Do not expose:
+
+- execution tools
+- wallet mutation tools
+- raw contract call tools
+
+## 8.2 Tools Exposed to Decision Agent
+
+Expose only read and scoring tools:
+
+- `get_wallet_context`
+- `get_token_market_snapshot`
+- `get_token_risk`
+- `get_signal_overlay`
+- `get_major_asset_execution_context`
+- `compute_ta_score`
+- `build_trade_sizing_inputs`
+
+Do not expose:
+
+- `execute_swap_*`
+- `wallet_contract_call`
+- gateway broadcast tools
+
+The decision agent outputs a typed decision object, not side effects.
+
+The graph should filter this tool set by lane:
+
+- major asset lane: no token-risk or regular-token research tools unless explicitly needed
+- regular token lane: full decision tool set
+
+## 8.3 Tools Exposed to Exit Agent
+
+Expose:
+
+- `get_position_snapshot`
+- `get_token_market_snapshot`
+- `compute_exit_ta_score`
+- `get_kol_followup_messages`
+
+Do not expose direct write tools.
+
+## 8.4 Execution Tools
+
+Execution tools should be called only by deterministic graph nodes after policy checks pass.
+
+That means:
+
+- the graph node decides whether execution is allowed,
+- the model does not get an open-ended choice to bypass safety steps,
+- every execution call happens with validated inputs.
+
+## 9. LangChain Implementation Pattern
+
+## 9.1 Base Agent Construction
+
+Use `create_agent(...)` for each bounded agent role:
+
+- one parsing agent,
+- one decision agent,
+- one exit agent.
+
+Each agent should have:
+
+- a role-specific prompt,
+- a narrow tool set,
+- a typed output schema,
+- middleware for prompt shaping and tool filtering,
+- checkpointer-backed execution via LangGraph.
+
+## 9.2 Runtime Context
+
+Use LangChain runtime context for static per-run dependencies:
+
+- `user_id`
+- `bot_id`
+- `source_channel_id`
+- `signal_id`
+- `position_id`
+- environment flags
+- DB/session handles via service container references
+
+Runtime context should not be used as the main business persistence layer.
+
+## 9.3 Middleware
+
+Use middleware for:
+
+- dynamic prompts based on action type,
+- filtering tools based on graph stage,
+- logging model call metadata,
+- attaching risk policy instructions,
+- selecting smaller vs stronger model variants when needed.
+
+## 10. Recommended Model Strategy
+
+Use at least two model profiles:
+
+- `fast_model` for parsing, summarization, and low-risk extraction
+- `strong_model` for final decision synthesis on ambiguous signals
+
+Example policy:
+
+- signal classification -> fast model
+- trade decision with incomplete or conflicting evidence -> strong model
+- Telegram summary generation -> fast model
+
+This follows the LangChain middleware pattern for dynamic model selection.
+
+## 11. Structured Output Contract
+
+Every model-facing critical step should produce structured output.
+
+### 11.1 Parsing Agent Output
+
+```text
+message_type
+is_trade_call
+raw_symbol
+raw_contract_address
+raw_chain_hint
+entry_reference
+target_reference
+stop_reference
+urgency
+confidence
+reasoning_summary
+```
+
+### 11.2 Decision Agent Output
+
+```text
+decision: execute | skip | block
+side: buy | none
+confidence
+trade_rationale
+risk_summary
+sizing_recommendation
+required_policy_checks
+telegram_summary
+```
+
+### 11.3 Exit Agent Output
+
+```text
+decision: exit_now | hold | reduce | block
+exit_reason
+confidence
+telegram_summary
+```
+
+## 12. Deterministic Policy Gates
+
+These rules must live outside the model:
+
+- wallet logged in
+- chain supported
+- sufficient balance on target execution chain
+- token resolved exactly when the regular-token lane requires it
+- token risk scan passed for the regular-token lane
+- quote exists
+- price impact <= hard cap
+- trade size <= configured max risk
+- active position count <= limit
+- chain exposure <= limit
+
+If any hard gate fails, execution stops regardless of model recommendation.
+
+## 13. Fault Tolerance
+
+Use LangGraph persistence with `thread_id` for:
+
+- recovery after process crash,
+- replay of failed runs,
+- auditability of state transitions,
+- idempotent resume behavior.
+
+Thread examples:
+
+- `signal:<signal_id>`
+- `position:<position_id>`
+- `command:<telegram_chat_id>:<message_id>`
+
+## 14. Observability
+
+Use LangSmith traces for:
+
+- per-node latency,
+- model/tool call visibility,
+- failure localization,
+- evaluation of parsing and decision quality.
+
+Keep application audit tables as the business source of truth for trade history.
