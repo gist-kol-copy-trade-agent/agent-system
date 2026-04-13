@@ -37,6 +37,7 @@ class TradingGraphState(TypedDict):
     execution_result: dict[str, Any] | None
     telegram_summary: str | None
     signal_overlay: dict[str, Any] | None
+    execution_trace: list[dict[str, Any]]
 
 
 class WalletCommandGraphState(TypedDict):
@@ -69,3 +70,4 @@ class ExitGraphState(TypedDict):
     execution_request: ExitExecutionRequest | None
     execution_result: ExitExecutionResult | None
     telegram_summary: str | None
+    execution_trace: list[dict[str, Any]]

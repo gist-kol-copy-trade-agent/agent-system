@@ -153,6 +153,7 @@ class _SequentialCompiledGraph:
         current = dict(state)
         current.update(self.service._node_ingest_signal(current))
         current.update(self.service._node_parse_signal(current))
+        current.update(self.service._node_notify_parse_progress(current))
         if self.service._route_after_validate_parse(current) == END:
             return current
         current.update(self.service._node_classify_asset_lane(current))
@@ -161,9 +162,12 @@ class _SequentialCompiledGraph:
             return current
         current.update(self.service._node_load_strategy_profile(current))
         current.update(self.service._node_enrich_context(current))
+        current.update(self.service._node_notify_enrichment_progress(current))
         current.update(self.service._node_compute_ta(current))
         current.update(self.service._node_decision(current))
+        current.update(self.service._node_notify_decision_progress(current))
         current.update(self.service._node_apply_policy_gate(current))
+        current.update(self.service._node_notify_policy_progress(current))
         if self.service._route_after_policy_gate(current) == "execute_trade":
             current.update(self.service._node_execute_trade(current))
             current.update(self.service._node_persist_trade_result(current))
@@ -238,6 +242,7 @@ class SignalIntakeGraphService:
             "execution_result": None,
             "telegram_summary": None,
             "signal_overlay": None,
+            "execution_trace": [],
             "request_user_id": request.user_id,
         }  # type: ignore[return-value]
 
@@ -252,17 +257,22 @@ class SignalIntakeGraphService:
         builder.add_node("resolve_target_asset", self._node_resolve_target_asset)
         builder.add_node("load_strategy_profile", self._node_load_strategy_profile)
         builder.add_node("enrich_context", self._node_enrich_context)
+        builder.add_node("notify_parse_progress", self._node_notify_parse_progress)
+        builder.add_node("notify_enrichment_progress", self._node_notify_enrichment_progress)
         builder.add_node("compute_ta", self._node_compute_ta)
         builder.add_node("decision", self._node_decision)
+        builder.add_node("notify_decision_progress", self._node_notify_decision_progress)
         builder.add_node("apply_policy_gate", self._node_apply_policy_gate)
+        builder.add_node("notify_policy_progress", self._node_notify_policy_progress)
         builder.add_node("execute_trade", self._node_execute_trade)
         builder.add_node("persist_trade_result", self._node_persist_trade_result)
         builder.add_node("notify_telegram", self._node_notify_telegram)
 
         builder.add_edge(START, "ingest_signal")
         builder.add_edge("ingest_signal", "parse_signal")
+        builder.add_edge("parse_signal", "notify_parse_progress")
         builder.add_conditional_edges(
-            "parse_signal",
+            "notify_parse_progress",
             self._route_after_validate_parse,
             {"classify_asset_lane": "classify_asset_lane", END: END},
         )
@@ -273,11 +283,14 @@ class SignalIntakeGraphService:
             {"load_strategy_profile": "load_strategy_profile", END: END},
         )
         builder.add_edge("load_strategy_profile", "enrich_context")
-        builder.add_edge("enrich_context", "compute_ta")
+        builder.add_edge("enrich_context", "notify_enrichment_progress")
+        builder.add_edge("notify_enrichment_progress", "compute_ta")
         builder.add_edge("compute_ta", "decision")
-        builder.add_edge("decision", "apply_policy_gate")
+        builder.add_edge("decision", "notify_decision_progress")
+        builder.add_edge("notify_decision_progress", "apply_policy_gate")
+        builder.add_edge("apply_policy_gate", "notify_policy_progress")
         builder.add_conditional_edges(
-            "apply_policy_gate",
+            "notify_policy_progress",
             self._route_after_policy_gate,
             {"execute_trade": "execute_trade", END: END},
         )
@@ -315,6 +328,25 @@ class SignalIntakeGraphService:
     def _route_after_validate_parse(self, state: TradingGraphState) -> str:
         parsed: ParsedSignal = state["parsed_signal"]  # type: ignore[assignment]
         return "classify_asset_lane" if parsed["is_actionable"] else END
+
+    def _node_notify_parse_progress(self, state: TradingGraphState) -> dict[str, Any]:
+        parsed = state["parsed_signal"] or {}
+        summary = (
+            f"Signal parsed: type={parsed.get('message_type')}, actionable={parsed.get('is_actionable')}, "
+            f"symbol={parsed.get('resolved_symbol') or parsed.get('raw_symbol') or 'unknown'}."
+        )
+        return self._progress_update(
+            state,
+            stage="parse",
+            summary=summary,
+            details={
+                "asset": parsed.get("resolved_symbol") or parsed.get("raw_symbol") or "unknown",
+                "message_type": parsed.get("message_type"),
+                "actionable": parsed.get("is_actionable"),
+                "confidence": parsed.get("confidence"),
+                "chain": parsed.get("resolved_chain") or parsed.get("raw_chain_hint") or "unknown",
+            },
+        )
 
     def _node_classify_asset_lane(self, state: TradingGraphState) -> dict[str, Any]:
         parsed: ParsedSignal = state["parsed_signal"]  # type: ignore[assignment]
@@ -387,6 +419,27 @@ class SignalIntakeGraphService:
             "signal_overlay": enrichment.get("signal_overlay"),
         }
 
+    def _node_notify_enrichment_progress(self, state: TradingGraphState) -> dict[str, Any]:
+        resolved = state["resolved_asset"] or {}
+        market = state["market_snapshot"] or {}
+        risk = state["risk_snapshot"] or {}
+        summary = (
+            f"Context ready: lane={resolved.get('asset_lane')}, chain={resolved.get('target_execution_chain')}, "
+            f"price={market.get('spot_price_usd')}, risk_scan_required={risk.get('risk_scan_required')}."
+        )
+        return self._progress_update(
+            state,
+            stage="enrichment",
+            summary=summary,
+            details={
+                "lane": resolved.get("asset_lane"),
+                "chain": resolved.get("target_execution_chain"),
+                "price": market.get("spot_price_usd"),
+                "wallet_ready": (state.get("wallet_snapshot") or {}).get("logged_in"),
+                "risk_scan": risk.get("risk_scan_required"),
+            },
+        )
+
     def _node_compute_ta(self, state: TradingGraphState) -> dict[str, Any]:
         resolved: ResolvedAsset = state["resolved_asset"]  # type: ignore[assignment]
         market = state["market_snapshot"] or {}
@@ -434,6 +487,24 @@ class SignalIntakeGraphService:
             )
         }
 
+    def _node_notify_decision_progress(self, state: TradingGraphState) -> dict[str, Any]:
+        decision = state["trade_decision"] or {}
+        summary = (
+            f"Decision formed: action={decision.get('decision')}, "
+            f"reason={decision.get('decision_reason_code')}, capped_amount={decision.get('capped_amount_usd')}."
+        )
+        return self._progress_update(
+            state,
+            stage="decision",
+            summary=summary,
+            details={
+                "action": decision.get("decision"),
+                "reason": decision.get("decision_reason_code"),
+                "amount_usd": decision.get("capped_amount_usd"),
+                "confidence": decision.get("confidence"),
+            },
+        )
+
     def _node_apply_policy_gate(self, state: TradingGraphState) -> dict[str, Any]:
         evaluation = self.policy_engine.evaluate(
             {
@@ -454,6 +525,23 @@ class SignalIntakeGraphService:
                 "gate_summary": evaluation.summary,
             }
         }
+
+    def _node_notify_policy_progress(self, state: TradingGraphState) -> dict[str, Any]:
+        gate = state["policy_gate_result"] or {}
+        summary = (
+            f"Policy gate: passed={gate.get('passed')}, action={gate.get('action')}, "
+            f"failures={gate.get('failure_codes') or []}."
+        )
+        return self._progress_update(
+            state,
+            stage="policy_gate",
+            summary=summary,
+            details={
+                "passed": gate.get("passed"),
+                "action": gate.get("action"),
+                "failures": gate.get("failure_codes") or [],
+            },
+        )
 
     def _route_after_policy_gate(self, state: TradingGraphState) -> str:
         gate = state.get("policy_gate_result") or {}
@@ -580,3 +668,25 @@ class SignalIntakeGraphService:
                 message_text=summary,
             )
         return {"telegram_summary": summary}
+
+    def _progress_update(
+        self,
+        state: TradingGraphState,
+        *,
+        stage: str,
+        summary: str,
+        details: dict | None = None,
+    ) -> dict[str, Any]:
+        trace = list(state.get("execution_trace") or [])
+        trace.append({"stage": stage, "summary": summary})
+        if self.notification_service is not None:
+            self.notification_service.send_progress_notification(
+                user_id=str(state.get("request_user_id") or "unknown"),
+                chat_id=str(state.get("request_user_id") or "unknown"),
+                related_signal_id=str(state.get("signal_id") or "unknown"),
+                related_position_id=state.get("position_id"),
+                stage=stage,
+                message_text=summary,
+                details=details,
+            )
+        return {"execution_trace": trace}

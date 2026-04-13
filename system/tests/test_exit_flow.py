@@ -167,7 +167,7 @@ def build_service(backend, *, trailing_state=None, current_price=110.0):
 
 
 def test_exit_flow_hold_path() -> None:
-    service, _, _, _, _, _ = build_service(HoldExitBackend())
+    service, _, _, _, _, notification_repo = build_service(HoldExitBackend())
     state = service.run(
         ExitFlowRequest(
             user_id="u1",
@@ -179,6 +179,16 @@ def test_exit_flow_hold_path() -> None:
     assert state["exit_decision"]["decision"] == "hold"
     assert state["policy_gate_result"]["action"] == "hold"
     assert state["execution_result"] is None
+    assert [item["stage"] for item in state["execution_trace"]] == [
+        "exit_ta",
+        "exit_decision",
+        "exit_policy_gate",
+    ]
+    assert len(notification_repo._records) == 3
+    assert notification_repo._records[0].notification_type == "progress:exit_ta"
+    assert "📉 Exit Monitoring" in notification_repo._records[0].message_text
+    assert "Symbol: ETH" in notification_repo._records[0].message_text
+    assert "Action: hold" in notification_repo._records[1].message_text
 
 
 def test_exit_flow_trailing_arm_path_updates_state() -> None:
@@ -213,9 +223,10 @@ def test_exit_flow_trailing_fire_executes_sell() -> None:
     assert state["policy_gate_result"]["action"] == "execute"
     assert state["execution_request"]["side"] == "sell"
     assert state["execution_result"]["success"] is True
+    assert len(state["execution_trace"]) == 3
     assert len(execution_repo._records) == 1
     assert len(position_event_repo._records) == 1
-    assert len(notification_repo._records) == 1
+    assert len(notification_repo._records) == 4
 
 
 def test_exit_flow_hard_exit_closes_position() -> None:
@@ -235,7 +246,7 @@ def test_exit_flow_hard_exit_closes_position() -> None:
     assert stored.status == "closed"
     assert len(execution_repo._records) == 1
     assert position_event_repo._records[0].event_type == "exit_execution_succeeded"
-    assert notification_repo._records[0].send_status == "sent"
+    assert notification_repo._records[-1].send_status == "sent"
 
 
 def test_onchainos_swap_exit_execution_runner_normalizes_cli_result() -> None:

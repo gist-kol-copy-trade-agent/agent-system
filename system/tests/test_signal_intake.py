@@ -91,9 +91,20 @@ def test_signal_intake_major_lane_flow() -> None:
     assert result["policy_gate_result"]["passed"] is True
     assert result["execution_request"]["side"] == "buy"
     assert result["execution_result"]["success"] is True
+    assert [item["stage"] for item in result["execution_trace"]] == [
+        "parse",
+        "enrichment",
+        "decision",
+        "policy_gate",
+    ]
     assert len(service._test_execution_repo._records) == 1  # type: ignore[attr-defined]
     assert len(service._test_position_event_repo._records) == 1  # type: ignore[attr-defined]
-    assert len(service._test_notification_repo._records) == 1  # type: ignore[attr-defined]
+    assert len(service._test_notification_repo._records) == 5  # type: ignore[attr-defined]
+    assert service._test_notification_repo._records[0].notification_type == "progress:parse"  # type: ignore[attr-defined]
+    assert "🔎 Signal Parsed" in service._test_notification_repo._records[0].message_text  # type: ignore[attr-defined]
+    assert "Asset: ETH" in service._test_notification_repo._records[0].message_text  # type: ignore[attr-defined]
+    assert "Action: execute" in service._test_notification_repo._records[2].message_text  # type: ignore[attr-defined]
+    assert "Passed: True" in service._test_notification_repo._records[3].message_text  # type: ignore[attr-defined]
     assert service._test_position_repo.get_by_position_id("pos:sig-major-1") is not None  # type: ignore[attr-defined]
 
 
@@ -113,6 +124,7 @@ def test_signal_intake_regular_lane_flow() -> None:
     assert result["risk_snapshot"]["risk_scan_required"] is True
     assert result["policy_gate_result"]["action"] == "execute"
     assert result["execution_result"]["success"] is True
+    assert len(result["execution_trace"]) == 4
 
 
 def test_signal_intake_non_actionable_signal_skips() -> None:
@@ -127,3 +139,4 @@ def test_signal_intake_non_actionable_signal_skips() -> None:
     )
     assert result["trade_decision"]["decision"] == "skip"
     assert result["trade_decision"]["decision_reason_code"] == "NON_ACTIONABLE_SIGNAL"
+    assert [item["stage"] for item in result["execution_trace"]] == ["parse"]

@@ -154,9 +154,12 @@ class _SequentialCompiledExitGraph:
         current.update(self.service._node_load_strategy_profile(current))
         current.update(self.service._node_load_market_context(current))
         current.update(self.service._node_compute_exit_ta(current))
+        current.update(self.service._node_notify_ta_progress(current))
         current.update(self.service._node_build_exit_inputs(current))
         current.update(self.service._node_exit_decision(current))
+        current.update(self.service._node_notify_decision_progress(current))
         current.update(self.service._node_apply_exit_policy_gate(current))
+        current.update(self.service._node_notify_policy_progress(current))
 
         route = self.service._route_after_policy_gate(current)
         if route == "persist_evaluation":
@@ -222,6 +225,7 @@ class ExitGraphService:
             "execution_request": None,
             "execution_result": None,
             "telegram_summary": None,
+            "execution_trace": [],
         }  # type: ignore[return-value]
 
     def _build_graph(self):
@@ -233,9 +237,12 @@ class ExitGraphService:
         builder.add_node("load_strategy_profile", self._node_load_strategy_profile)
         builder.add_node("load_market_context", self._node_load_market_context)
         builder.add_node("compute_exit_ta", self._node_compute_exit_ta)
+        builder.add_node("notify_ta_progress", self._node_notify_ta_progress)
         builder.add_node("build_exit_inputs", self._node_build_exit_inputs)
         builder.add_node("exit_decision", self._node_exit_decision)
+        builder.add_node("notify_decision_progress", self._node_notify_decision_progress)
         builder.add_node("apply_exit_policy_gate", self._node_apply_exit_policy_gate)
+        builder.add_node("notify_policy_progress", self._node_notify_policy_progress)
         builder.add_node("persist_evaluation", self._node_persist_evaluation)
         builder.add_node("execute_exit", self._node_execute_exit)
         builder.add_node("persist_exit_result", self._node_persist_exit_result)
@@ -245,11 +252,14 @@ class ExitGraphService:
         builder.add_edge("load_position", "load_strategy_profile")
         builder.add_edge("load_strategy_profile", "load_market_context")
         builder.add_edge("load_market_context", "compute_exit_ta")
-        builder.add_edge("compute_exit_ta", "build_exit_inputs")
+        builder.add_edge("compute_exit_ta", "notify_ta_progress")
+        builder.add_edge("notify_ta_progress", "build_exit_inputs")
         builder.add_edge("build_exit_inputs", "exit_decision")
-        builder.add_edge("exit_decision", "apply_exit_policy_gate")
+        builder.add_edge("exit_decision", "notify_decision_progress")
+        builder.add_edge("notify_decision_progress", "apply_exit_policy_gate")
+        builder.add_edge("apply_exit_policy_gate", "notify_policy_progress")
         builder.add_conditional_edges(
-            "apply_exit_policy_gate",
+            "notify_policy_progress",
             self._route_after_policy_gate,
             {
                 "persist_evaluation": "persist_evaluation",
@@ -385,6 +395,24 @@ class ExitGraphService:
         }
         return {"exit_ta_snapshot": exit_ta_snapshot}
 
+    def _node_notify_ta_progress(self, state: ExitGraphState) -> dict[str, Any]:
+        ta = state["exit_ta_snapshot"] or {}
+        summary = (
+            f"Exit TA ready: pnl={ta.get('unrealized_pnl_pct')}, drawdown={ta.get('drawdown_from_peak_pct')}, "
+            f"summary={ta.get('exit_ta_summary')}."
+        )
+        return self._progress_update(
+            state,
+            stage="exit_ta",
+            summary=summary,
+            details={
+                "symbol": (state.get("position_snapshot") or {}).get("symbol"),
+                "pnl_pct": ta.get("unrealized_pnl_pct"),
+                "drawdown_pct": ta.get("drawdown_from_peak_pct"),
+                "triggers": ta.get("exit_ta_summary"),
+            },
+        )
+
     def _node_build_exit_inputs(self, state: ExitGraphState) -> dict[str, Any]:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
         market: ExitMarketSnapshot = state["exit_market_snapshot"]  # type: ignore[assignment]
@@ -411,6 +439,23 @@ class ExitGraphService:
         )
         return {"exit_decision": decision, "telegram_summary": decision["telegram_summary"]}
 
+    def _node_notify_decision_progress(self, state: ExitGraphState) -> dict[str, Any]:
+        decision = state["exit_decision"] or {}
+        summary = (
+            f"Exit decision formed: action={decision.get('decision')}, "
+            f"reason={decision.get('decision_reason_code')}."
+        )
+        return self._progress_update(
+            state,
+            stage="exit_decision",
+            summary=summary,
+            details={
+                "action": decision.get("decision"),
+                "reason": decision.get("decision_reason_code"),
+                "confidence": decision.get("confidence"),
+            },
+        )
+
     def _node_apply_exit_policy_gate(self, state: ExitGraphState) -> dict[str, Any]:
         evaluation = self.policy_engine.evaluate(state)
         return {
@@ -421,6 +466,23 @@ class ExitGraphService:
                 "summary": evaluation.summary,
             }
         }
+
+    def _node_notify_policy_progress(self, state: ExitGraphState) -> dict[str, Any]:
+        gate = state["policy_gate_result"] or {}
+        summary = (
+            f"Exit policy gate: passed={gate.get('passed')}, action={gate.get('action')}, "
+            f"failures={gate.get('failure_codes') or []}."
+        )
+        return self._progress_update(
+            state,
+            stage="exit_policy_gate",
+            summary=summary,
+            details={
+                "passed": gate.get("passed"),
+                "action": gate.get("action"),
+                "failures": gate.get("failure_codes") or [],
+            },
+        )
 
     def _route_after_policy_gate(self, state: ExitGraphState) -> str:
         gate = state.get("policy_gate_result") or {}
@@ -607,6 +669,28 @@ class ExitGraphService:
                 message_text=summary,
             )
         return {"telegram_summary": summary}
+
+    def _progress_update(
+        self,
+        state: ExitGraphState,
+        *,
+        stage: str,
+        summary: str,
+        details: dict | None = None,
+    ) -> dict[str, Any]:
+        trace = list(state.get("execution_trace") or [])
+        trace.append({"stage": stage, "summary": summary})
+        if self.notification_service is not None:
+            self.notification_service.send_progress_notification(
+                user_id=str(state.get("user_id") or "unknown"),
+                chat_id=str(state.get("user_id") or "unknown"),
+                related_signal_id=None,
+                related_position_id=str(state.get("position_id") or "unknown"),
+                stage=stage,
+                message_text=summary,
+                details=details,
+            )
+        return {"execution_trace": trace}
 
     @staticmethod
     def _parse_datetime(value: str | None) -> datetime | None:
