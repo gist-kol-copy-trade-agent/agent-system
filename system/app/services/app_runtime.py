@@ -95,7 +95,12 @@ def build_application_runtime(
     signal_graph = SignalIntakeGraphService(
         parsing_agent=ParsingAgent(),
         strategy_profiles=strategy_profiles,
+        enrichment_agent=None,
         decision_agent=DecisionAgent(),
+        execution_repository=execution_repo,
+        position_repository=position_repo,
+        position_event_repository=position_event_repo,
+        notification_service=notification_service,
     )
     exit_graph = ExitGraphService(
         strategy_profiles=strategy_profiles,

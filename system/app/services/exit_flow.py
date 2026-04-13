@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from app.agents.exit import ExitAgent
-from app.graphs.runtime import build_checkpointer
+from app.agents.swap_execution import CallableSwapExecutionBackend, SwapExecutionAgent
+from app.config.settings import get_settings
+from app.graphs.runtime import build_checkpointer, invoke_graph
 from app.graphs.state import ExitGraphState
 from app.persistence.repositories import (
     PositionExitEvaluationRecord,
@@ -31,6 +33,21 @@ except ModuleNotFoundError:  # pragma: no cover
     END = "__end__"
     START = "__start__"
     StateGraph = None  # type: ignore[assignment]
+
+try:
+    from langgraph.func import task
+except ModuleNotFoundError:  # pragma: no cover
+    def task(func):
+        return func
+
+
+def _resolve_task_result(value):
+    return value.result() if hasattr(value, "result") else value
+
+
+@task
+def _execute_exit_task(swap_execution_agent: SwapExecutionAgent, *, intent: dict[str, Any]) -> dict[str, Any]:
+    return swap_execution_agent.execute(intent=intent)
 
 
 class ExitExecutionRunner(Protocol):
@@ -158,6 +175,7 @@ class ExitGraphService:
         *,
         strategy_profiles: StrategyProfileService,
         exit_agent: ExitAgent | None = None,
+        swap_execution_agent: SwapExecutionAgent | None = None,
         policy_engine: DefaultExitPolicyEngine | None = None,
         position_repository: PositionRepository | None = None,
         evaluation_repository: PositionExitEvaluationRepository | None = None,
@@ -175,12 +193,16 @@ class ExitGraphService:
         self.position_event_repository = position_event_repository
         self.notification_service = notification_service
         self.execution_runner = execution_runner or OnchainOSSwapExitExecutionRunner()
+        self.swap_execution_agent = swap_execution_agent or SwapExecutionAgent(
+            backend=CallableSwapExecutionBackend(self.execution_runner.execute)
+        )
+        self.durability_mode = get_settings().langgraph.exit_durability
         self.graph = self._build_graph()
 
     def run(self, request: ExitFlowRequest, *, thread_id: str | None = None) -> ExitGraphState:
         initial_state = self._initial_state(request)
         config = {"configurable": {"thread_id": thread_id or f"position:{request.position_id}:exit:{request.cycle_id}"}}
-        return self.graph.invoke(initial_state, config=config)
+        return invoke_graph(self.graph, initial_state, config=config, durability=self.durability_mode)
 
     def _initial_state(self, request: ExitFlowRequest) -> ExitGraphState:
         return {
@@ -474,8 +496,29 @@ class ExitGraphService:
                 else strategy.get("max_slippage_pct_regular")
             ),
         }
-        execution_result = self.execution_runner.execute(execution_request)
-        return {"execution_request": execution_request, "execution_result": execution_result}
+        swap_output = _resolve_task_result(_execute_exit_task(
+            self.swap_execution_agent,
+            intent={
+                "user_id": state.get("user_id"),
+                "position_id": position["position_id"],
+                "asset_lane": position["asset_lane"],
+                "side": "sell",
+                "chain": position["chain"],
+                "wallet_address": position["wallet_address"],
+                "from_token": position["token_contract_address"] or position["symbol"],
+                "to_token": exit_token,
+                "readable_amount": str(amount),
+                "slippage_pct": (
+                    strategy.get("max_slippage_pct_major")
+                    if position["asset_lane"] == "major"
+                    else strategy.get("max_slippage_pct_regular")
+                ),
+            },
+        ))
+        return {
+            "execution_request": swap_output["execution_request"],
+            "execution_result": swap_output["execution_result"],
+        }
 
     def _node_persist_exit_result(self, state: ExitGraphState) -> dict[str, Any]:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]

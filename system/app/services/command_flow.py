@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.graphs.runtime import build_checkpointer, build_thread_id
+from app.config.settings import get_settings
+from app.graphs.runtime import build_checkpointer, build_thread_id, invoke_graph
 from app.graphs.state import WalletCommandGraphState
 from app.schemas.commands import CommandEnvelope
 from app.services.source_registry import SourceRegistryService
@@ -55,6 +56,7 @@ class DeterministicCommandGraphService:
         self.source_registry = source_registry
         self.callback_url = callback_url
         self.callback_secret = callback_secret
+        self.durability_mode = get_settings().langgraph.command_durability
         self.graph = self._build_graph()
 
     def run(self, request: DeterministicCommandRequest | CommandEnvelope) -> WalletCommandGraphState:
@@ -68,7 +70,7 @@ class DeterministicCommandGraphService:
             normalized = request
         initial_state = self._initial_state(normalized)
         config = {"configurable": {"thread_id": build_thread_id("command", f"{normalized.user_id}:{normalized.raw_text}")}}
-        return self.graph.invoke(initial_state, config=config)
+        return invoke_graph(self.graph, initial_state, config=config, durability=self.durability_mode)
 
     def _initial_state(self, request: DeterministicCommandRequest) -> WalletCommandGraphState:
         return {

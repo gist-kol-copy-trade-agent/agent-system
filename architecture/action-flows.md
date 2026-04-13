@@ -108,14 +108,12 @@ Persist:
   - decimals
   - market metadata snapshot
 
-### Step 6: Load Wallet Context
-Model-assisted.
-
+### Step 6: Enrichment
 Model call: yes
 
 Agent:
 
-- `Decision Agent`
+- `Enrichment Agent`
 
 Tools exposed:
 
@@ -123,37 +121,16 @@ Tools exposed:
 - `load_okx_skill_reference`
 - `run_onchainos_readonly`
 
-Required skill:
+Expected output:
 
-- `okx-agentic-wallet`
-
-Rules:
-
-- if not logged in -> stop
-- if no funds on target execution chain -> stop
-
-Persist:
-
-- wallet readiness snapshot
-
-### Step 7: Enrichment
-Mostly deterministic.
-
-Model call: no
-
-Tools:
-
-- `load_okx_skill`
-- `load_okx_skill_reference`
-- `run_onchainos_readonly`
-- `compute_ta_score`
-- `build_trade_sizing_inputs`
+- wallet snapshot
+- market snapshot
+- risk snapshot
+- optional signal overlay / quote context
 
 Persist:
 
 - enrichment snapshot
-- TA snapshot
-- risk snapshot
 
 Lane behavior:
 
@@ -162,6 +139,19 @@ Lane behavior:
   - skip regular-token risk research
 - regular token lane:
   - use full enrichment and token-risk path
+
+### Step 7: Compute TA
+Deterministic.
+
+Model call: no
+
+Tools:
+
+- `compute_ta_score`
+
+Persist:
+
+- TA snapshot
 
 ### Step 8: Decision Synthesis
 Model call: yes
@@ -172,14 +162,11 @@ Agent:
 
 Tools exposed:
 
-- `load_okx_skill`
-- `load_okx_skill_reference`
-- `run_onchainos_readonly`
-- `compute_ta_score`
-- `build_trade_sizing_inputs`
+- none by default
 
 Tools not exposed:
 
+- OKX read tools
 - execution tools
 
 Expected output:
@@ -213,13 +200,27 @@ Persist:
 - failure reason if blocked
 
 ### Step 10: Execute Buy
-Deterministic.
+Model call: yes, but only after deterministic policy approval.
 
-Model call: no
+Agent:
 
-Tools:
+- `Swap Execution Agent`
 
-- `execute_swap_buy`
+Tools exposed:
+
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- restricted mutating swap execution tool
+
+Required skill:
+
+- `okx-dex-swap`
+
+Rules:
+
+- input to this step must already be policy-approved
+- the execution agent may plan route and execute swap, but may not change trade intent or bypass policy
+- idempotency and persistence remain outside the agent
 
 Persist:
 
@@ -403,11 +404,28 @@ If result is:
 - `exit_trailing_arm`, persist updated trailing state only
 
 ### Step 7: Execute Exit
-Deterministic.
+Model call: yes, but only after deterministic exit policy approval.
 
-Tools:
+Agent:
 
-- `execute_swap_sell`
+- `Swap Execution Agent`
+
+Tools exposed:
+
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- restricted mutating swap execution tool
+
+Required skill:
+
+- `okx-dex-swap`
+
+Rules:
+
+- execution agent receives validated sell intent only
+- it may synthesize route details and call sell execution
+- it may not reopen policy decisions or alter exit intent
+- idempotency and persistence remain deterministic outside the agent
 
 Persist:
 

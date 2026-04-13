@@ -56,6 +56,8 @@ class WorkflowRunRecord:
     related_position_id: str | None
     status: str
     last_node: str | None = None
+    checkpoint_id: str | None = None
+    run_metadata: dict | None = None
 
 
 @dataclass
@@ -506,6 +508,8 @@ class SQLAlchemyWorkflowRunRepository(_SQLAlchemyRepositoryBase):
                     related_position_id=record.related_position_id,
                     status=record.status,
                     last_node=record.last_node,
+                    checkpoint_id=record.checkpoint_id,
+                    run_metadata_json=record.run_metadata,
                 )
                 session.add(model)
             else:
@@ -514,6 +518,8 @@ class SQLAlchemyWorkflowRunRepository(_SQLAlchemyRepositoryBase):
                 model.related_position_id = record.related_position_id
                 model.status = record.status
                 model.last_node = record.last_node
+                model.checkpoint_id = record.checkpoint_id
+                model.run_metadata_json = record.run_metadata
             session.commit()
             return record
 

@@ -13,6 +13,7 @@ This folder defines the internal agent architecture for the PoC/V1 product:
 
 - [design-principles.md](design-principles.md): the architecture north star for dividing responsibilities between LangChain and LangGraph.
 - [core-agent-architecture.md](core-agent-architecture.md): overall agent topology, LangChain/LangGraph design, node boundaries, and tool exposure rules.
+- [agent-skill-runtime.md](agent-skill-runtime.md): runtime path showing when each agent loads OKX skills, which tools it calls, and where bounded `onchainos` execution happens.
 - [action-flows.md](action-flows.md): per-action interaction flow showing when the model is called, which tools are exposed, and which steps stay deterministic.
 - [domain-schemas.md](domain-schemas.md): normalized internal domain objects for parsed signals, resolutions, enrichment, decisions, execution, and graph state.
 - [policy-spec.md](policy-spec.md): deterministic skip/block/execute rules, lane behavior, sizing logic, and fallback exit policy.

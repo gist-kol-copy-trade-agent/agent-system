@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agents.wallet_command import WalletCommandAgent
-from app.graphs.runtime import build_checkpointer, build_thread_id
+from app.config.settings import get_settings
+from app.graphs.runtime import build_checkpointer, build_thread_id, invoke_graph
 from app.graphs.state import WalletCommandGraphState
 from app.schemas.commands import CommandEnvelope
 
@@ -44,6 +45,7 @@ class _SequentialWalletCommandGraph:
 class WalletCommandGraphService:
     def __init__(self, *, wallet_command_agent: WalletCommandAgent) -> None:
         self.wallet_command_agent = wallet_command_agent
+        self.durability_mode = get_settings().langgraph.command_durability
         self.graph = self._build_graph()
 
     def run(self, request: WalletCommandRequest | CommandEnvelope) -> WalletCommandGraphState:
@@ -53,7 +55,7 @@ class WalletCommandGraphService:
             normalized = request
         initial_state = self._initial_state(normalized)
         config = {"configurable": {"thread_id": build_thread_id("command", f"{normalized.user_id}:{normalized.raw_text}")}}
-        return self.graph.invoke(initial_state, config=config)
+        return invoke_graph(self.graph, initial_state, config=config, durability=self.durability_mode)
 
     def _initial_state(self, request: WalletCommandRequest) -> WalletCommandGraphState:
         return {

@@ -100,6 +100,17 @@ Purpose:
 
 This agent should not directly execute unrestricted trade side effects.
 
+### 4.5 Swap Execution Agent
+Purpose:
+
+- receive already policy-approved buy or sell intent,
+- load `okx-dex-swap` skill,
+- synthesize route / execution details,
+- invoke bounded swap execution tools.
+
+This agent must not decide whether execution is allowed.
+That remains outside the agent in deterministic policy-gate nodes.
+
 ## 5. Why Not a Single Always-On General Agent
 
 A single unrestricted agent would create avoidable failure modes:
@@ -130,7 +141,7 @@ Recommended node sequence:
 10. `run_conditional_security_checks`
 11. `decision_agent`
 12. `apply_policy_gate`
-13. `execute_trade`
+13. `swap_execution_agent`
 14. `persist_trade_result`
 15. `notify_telegram`
 
@@ -146,7 +157,7 @@ Recommended node sequence:
 6. `exit_decision_agent`
 7. `apply_exit_policy_gate`
 8. `persist_hold_or_trailing_state`
-9. `execute_exit`
+9. `swap_execution_agent`
 10. `persist_exit_result`
 11. `notify_telegram`
 
@@ -257,13 +268,14 @@ Do not expose unrestricted trade execution tools in generic command flows.
 
 ## 8.5 Execution Tools
 
-Execution tools should be called only by deterministic graph nodes after policy checks pass.
+Execution tools should be exposed only to a bounded `Swap Execution Agent` after policy checks pass.
 
 That means:
 
 - the graph node decides whether execution is allowed,
 - the model does not get an open-ended choice to bypass safety steps,
-- every execution call happens with validated inputs.
+- every execution call happens with validated inputs,
+- persistence and idempotency remain outside the agent in deterministic nodes.
 
 ## 9. LangChain Implementation Pattern
 
@@ -272,8 +284,10 @@ That means:
 Use `create_agent(...)` for each bounded agent role:
 
 - one parsing agent,
+- one enrichment agent,
 - one decision agent,
-- one exit agent.
+- one exit agent,
+- one swap execution agent.
 
 Each agent should have:
 

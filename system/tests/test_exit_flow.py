@@ -1,4 +1,5 @@
 from app.agents.exit import ExitAgent
+from app.agents.swap_execution import SwapExecutionAgent
 from app.persistence.repositories import (
     InMemoryPositionExitEvaluationRepository,
     InMemoryPositionEventRepository,
@@ -93,18 +94,31 @@ class HardExitBackend:
         }
 
 
-class FakeExitExecutionRunner:
-    def execute(self, request):
+class FakeSwapExecutionBackend:
+    def execute(self, *, intent):
         return {
-            "position_id": request["position_id"],
-            "success": True,
-            "execution_id": f"exec:{request['position_id']}",
-            "approve_tx_hash": None,
-            "swap_tx_hash": "0xexit",
-            "realized_output_amount": "100.0",
-            "realized_output_symbol": request["to_token"],
-            "error_code": None,
-            "error_message": None,
+            "execution_request": {
+                "asset_lane": intent["asset_lane"],
+                "position_id": intent["position_id"],
+                "side": intent["side"],
+                "chain": intent["chain"],
+                "wallet_address": intent["wallet_address"],
+                "from_token": intent["from_token"],
+                "to_token": intent["to_token"],
+                "readable_amount": intent["readable_amount"],
+                "slippage_pct": intent["slippage_pct"],
+            },
+            "execution_result": {
+                "position_id": intent["position_id"],
+                "success": True,
+                "execution_id": f"exec:{intent['position_id']}",
+                "approve_tx_hash": None,
+                "swap_tx_hash": "0xexit",
+                "realized_output_amount": "100.0",
+                "realized_output_symbol": intent["to_token"],
+                "error_code": None,
+                "error_message": None,
+            },
         }
 
 
@@ -147,7 +161,7 @@ def build_service(backend, *, trailing_state=None, current_price=110.0):
         execution_repository=execution_repo,
         position_event_repository=position_event_repo,
         notification_service=notification_service,
-        execution_runner=FakeExitExecutionRunner(),
+        swap_execution_agent=SwapExecutionAgent(backend=FakeSwapExecutionBackend()),
     )
     return service, position_repo, eval_repo, execution_repo, position_event_repo, notification_repo
 

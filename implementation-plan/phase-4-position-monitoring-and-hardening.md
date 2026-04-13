@@ -75,16 +75,25 @@ The `Exit Agent` should use market data and settings to decide between:
 - `exit_trailing_arm`
 - `exit_trailing_fire`
 
-## 5. Deterministic Sell Execution Boundary
+## 5. Swap Execution Agent for Exit
 
-Implement deterministic execution after the exit gate passes:
+Implement bounded sell execution after the exit gate passes:
 
-- build validated sell execution request
-- call sell execution runner
+- reuse the shared `Swap Execution Agent`
+- call it with validated sell intent
+- load `okx-dex-swap` skill
+- let the agent synthesize sell execution request / route details from validated inputs
+- invoke sell execution through the execution-agent tool surface
 - persist execution and position-close records
 - guarantee idempotent behavior on retries
 
-The exit agent must not call sell execution directly.
+The `Exit Agent` must not call sell execution directly.
+The execution agent runs only after the deterministic exit gate has passed.
+
+Implementation order:
+
+1. replace current exit execution runner path with swap-execution-agent path
+2. keep idempotency, execution persistence, and position-close persistence in deterministic nodes
 
 ## 6. Reliability Hardening
 
@@ -123,6 +132,7 @@ Implement operational support for demo use:
 - fallback TP/SL/time exits work when no explicit manual exit exists
 - trailing state can be armed and later fired based on configured thresholds
 - exit trades create execution + position event records
+- exit execution uses a bounded `Swap Execution Agent` after policy approval, not backend-only sell request construction
 - workflow restart does not create duplicate executions
 - failed external integrations can be retried or surfaced cleanly
 - tracing/logging is sufficient to debug:

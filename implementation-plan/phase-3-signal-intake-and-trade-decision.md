@@ -30,16 +30,19 @@ Implement the LangGraph flow for:
 3. validate parse
 4. classify asset lane
 5. resolve target asset
-6. load wallet context
-7. fetch market context
-8. compute TA
-9. fetch optional signal overlay
-10. run conditional risk checks
-11. decision agent
-12. policy gate
-13. execution
-14. persistence
-15. notification
+6. enrichment agent
+7. compute TA
+8. decision agent
+9. policy gate
+10. execution
+11. persistence
+12. notification
+
+The graph should follow this boundary:
+
+- `Parsing Agent` may use skill-guided OKX reads only for parsing and token-clue resolution
+- `Enrichment Agent` is the only agent in the buy path that should collect OKX-covered live context
+- `Decision Agent` should not call `onchainos`; it should reason only over already-collected snapshots
 
 ## 3. OKX Adapter Implementations
 
@@ -64,13 +67,28 @@ Implement application-owned TA tools:
 
 Keep the TA system intentionally narrow for PoC.
 
-## 5. Decision Agent
+## 5. Enrichment Agent
+
+Implement a bounded enrichment / context collection agent:
+
+- load OKX skills on demand
+- use `run_onchainos_readonly`
+- collect and normalize:
+  - wallet context
+  - market context
+  - risk context
+  - optional quote / overlay context
+- output structured enrichment snapshots
+
+This agent replaces backend-side stub collection of wallet/market/risk data.
+
+## 6. Decision Agent
 
 Implement the bounded decision agent:
 
-- consume structured signal and strategy context
-- load OKX skills on demand
-- use `run_onchainos_readonly` for wallet, market, risk, and quote reads
+- consume fully prepared snapshots and strategy context
+- do not call `onchainos`
+- do not expose OKX skill-loading tools
 - no direct execution tools
 - output structured `TradeDecision`
 
@@ -81,7 +99,7 @@ The decision agent should support both:
 
 with lane-aware prompts or middleware context.
 
-## 6. Policy Gate
+## 7. Policy Gate
 
 Implement the deterministic policy evaluator from:
 
@@ -96,17 +114,33 @@ Implement the deterministic policy evaluator from:
 
 This node is the final authority before execution.
 
-## 7. Execution Path
+## 8. Execution Path
 
-Implement deterministic execution nodes:
+Implement `Swap Execution Agent` flow after policy approval:
 
-- build execution request
-- submit buy via `swap execute`
+- add a shared `Swap Execution Agent`
+- add restricted mutating swap tool(s) only for that agent
+- call the execution agent with validated buy intent
+- load `okx-dex-swap` skill
+- synthesize execution request / route details from validated inputs
+- invoke `swap execute` through the execution-agent tool surface
 - persist execution result
 - create position record
 - notify Telegram
 
-## 8. Demo Support
+Execution planning should move out of backend-only request construction.
+However:
+
+- policy approval still remains deterministic and happens before the execution agent runs
+- idempotency, persistence, and workflow control remain deterministic outside the agent
+
+Implementation order:
+
+1. add shared swap-execution agent and tool surface
+2. refactor buy execution path to use it
+3. keep persistence and position creation in deterministic nodes
+
+## 9. Demo Support
 
 Ensure the system can demonstrate:
 
@@ -125,8 +159,10 @@ Ensure the system can demonstrate:
   - advanced-info risk enrichment
   - TA scoring
   - policy gate
-- wallet context used for decision is obtained via model-assisted skill flow, not adapter-first prompt stuffing
+- wallet, market, and risk context used for decision is obtained via the enrichment agent through model-assisted skill flow, not backend stubs
+- decision agent does not call `onchainos` once enrichment snapshots are available
 - execution only happens after deterministic policy approval
+- buy execution uses a bounded `Swap Execution Agent` with `okx-dex-swap` skill rather than backend-only route construction
 - successful execution creates:
   - trade decision record
   - trade execution record

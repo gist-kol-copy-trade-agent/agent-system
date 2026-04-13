@@ -5,12 +5,16 @@ from typing import Any
 import pytest
 
 from app.agents.decision import LangChainDecisionBackend
+from app.agents.enrichment import LangChainEnrichmentBackend
 from app.agents.exit import LangChainExitBackend
 from app.agents.parsing import LangChainParsingBackend
+from app.agents.swap_execution import LangChainSwapExecutionBackend
 from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
+    EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
     ParsingAgentRuntimeContext,
+    SwapExecutionAgentRuntimeContext,
     WalletCommandRuntimeContext,
 )
 from app.agents.wallet_command import LangChainWalletCommandBackend
@@ -40,6 +44,30 @@ def test_parsing_backend_registers_bound_tools_and_context_schema(monkeypatch) -
     }
 
 
+def test_enrichment_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainEnrichmentBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is EnrichmentAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_readonly",
+    }
+
+
 def test_decision_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
     langchain = pytest.importorskip("langchain.agents")
 
@@ -57,13 +85,7 @@ def test_decision_backend_registers_bound_tools_and_context_schema(monkeypatch) 
 
     kwargs = captured["kwargs"]
     assert kwargs["context_schema"] is DecisionAgentRuntimeContext
-    assert {tool.name for tool in kwargs["tools"]} == {
-        "load_okx_skill",
-        "load_okx_skill_reference",
-        "run_onchainos_readonly",
-        "compute_ta_score",
-        "build_trade_sizing_inputs",
-    }
+    assert kwargs["tools"] == []
 
 
 def test_decision_backend_uses_runtime_context_instead_of_prompt_stuffing() -> None:
@@ -114,11 +136,11 @@ def test_decision_backend_uses_runtime_context_instead_of_prompt_stuffing() -> N
 
     assert result["decision"] == "execute"
     payload_text = backend._agent.payload["messages"][0]["content"]
-    assert "wallet_snapshot" not in payload_text
-    assert "market_snapshot" not in payload_text
-    assert "risk_snapshot" not in payload_text
-    assert "ta_snapshot" not in payload_text
-    assert backend._agent.context.preloaded_wallet_snapshot == {"logged_in": True, "available_balance_usd": 500.0}
+    assert "wallet_snapshot" in payload_text
+    assert "market_snapshot" in payload_text
+    assert "risk_snapshot" in payload_text
+    assert "ta_snapshot" in payload_text
+    assert backend._agent.context.wallet_snapshot == {"logged_in": True, "available_balance_usd": 500.0}
 
 
 def test_wallet_command_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
@@ -168,4 +190,28 @@ def test_exit_backend_registers_bound_tools_and_context_schema(monkeypatch) -> N
         "get_position_snapshot",
         "get_token_market_snapshot",
         "compute_exit_ta_score",
+    }
+
+
+def test_swap_execution_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainSwapExecutionBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is SwapExecutionAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_mutating_swap",
     }

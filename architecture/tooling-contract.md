@@ -73,7 +73,8 @@ Examples:
 - `wallet_login`
 - `wallet_verify`
 
-These should not be generally exposed to decision agents.
+These should not be generally exposed to decision or exit agents.
+They should be exposed only to a bounded `Swap Execution Agent` after policy approval.
 
 ## 3. Recommended Tool List
 
@@ -229,46 +230,31 @@ Typical commands:
 Wallet and balance flows should not rely on app-defined business wrappers as the main model-facing interface.
 The LLM should reason from the loaded skill plus the generic read-only command tool.
 
-## 3.5 Deterministic Execution Tools
+## 3.5 Swap Execution Agent Tools
 
-### `execute_swap_buy`
-Wraps:
+### `load_okx_skill`
+Primary execution skill:
 
-- `onchainos swap execute`
+- `okx-dex-swap`
 
-Inputs:
+### `load_okx_skill_reference`
+Use for execution-skill references such as:
 
-- `from_token`
-- `to_token`
-- `readable_amount`
-- `chain`
-- `wallet_address`
-- `slippage_policy`
-- `gas_policy`
+- route semantics
+- swap execution caveats
+- supported chains / token formats
 
-Returns:
+### `run_onchainos_mutating_swap`
+Purpose:
 
-- tx hashes
-- output amount
-- gas used
+- execute `onchainos swap execute` using already validated inputs
 
-### `execute_swap_sell`
-Wraps:
+Rules:
 
-- `onchainos swap execute`
-
-Inputs:
-
-- held token
-- exit token
-- amount
-- chain
-- wallet address
-
-Returns:
-
-- tx hashes
-- realized proceeds
+- only available after deterministic policy approval
+- only buy/sell swap execution is allowed
+- input intent is fixed by upstream graph state
+- idempotency keying and persistence remain outside the agent
 
 ## 4. Tool Implementation Guidance
 

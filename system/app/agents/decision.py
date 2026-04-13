@@ -8,8 +8,6 @@ from pydantic import BaseModel
 
 from app.agents.runtime_context import DecisionAgentRuntimeContext
 from app.config.settings import get_settings
-from app.services.onchainos_runner import OnchainOSReadonlyRunner
-from app.services.okx_skills import OKXSkillRegistry
 from app.tools.langchain_agent_tools import build_decision_agent_tools
 
 
@@ -52,16 +50,10 @@ class LangChainDecisionBackend:
         *,
         model: str | None = None,
         tools: list | None = None,
-        skill_registry: OKXSkillRegistry | None = None,
-        readonly_runner: OnchainOSReadonlyRunner | None = None,
     ) -> None:
         self._agent = None
         self.model = model
         self.tools = tools if tools is not None else build_decision_agent_tools()
-        self.skill_registry = skill_registry or OKXSkillRegistry()
-        self.readonly_runner = readonly_runner or OnchainOSReadonlyRunner(
-            timeout_seconds=get_settings().models.timeout_seconds
-        )
 
     def decide(
         self,
@@ -84,7 +76,12 @@ class LangChainDecisionBackend:
                         "content": self._build_prompt(
                             parsed_signal=parsed_signal,
                             resolved_asset=resolved_asset,
+                            wallet_snapshot=wallet_snapshot,
+                            market_snapshot=market_snapshot,
+                            risk_snapshot=risk_snapshot,
+                            ta_snapshot=ta_snapshot,
                             strategy_profile=strategy_profile,
+                            signal_overlay=signal_overlay,
                         ),
                     }
                 ]
@@ -114,10 +111,8 @@ class LangChainDecisionBackend:
 
         system_prompt = (
             "You are a decision agent for an on-chain copy-trading bot. "
-            "You receive structured signal, resolved asset, and strategy-profile context. "
-            "For OKX OnchainOS-covered capabilities, first load the relevant OKX skill and follow its guidance through "
-            "run_onchainos_readonly rather than relying on hidden backend wrappers. "
-            "Use app-owned tools only for capabilities not covered by OnchainOS, such as TA scoring and trade sizing inputs. "
+            "You receive complete structured decision inputs, including parsed signal, resolved asset, wallet snapshot, market snapshot, risk snapshot, TA snapshot, and strategy profile. "
+            "Do not call external systems. "
             "Return a structured trade decision with one of: execute, skip, block. "
             "Be lane-aware: major assets and regular tokens have different analysis requirements. "
             "Do not invent missing data. Output only the structured schema."
@@ -136,17 +131,27 @@ class LangChainDecisionBackend:
         *,
         parsed_signal: dict[str, Any],
         resolved_asset: dict[str, Any],
+        wallet_snapshot: dict[str, Any],
+        market_snapshot: dict[str, Any],
+        risk_snapshot: dict[str, Any],
+        ta_snapshot: dict[str, Any],
         strategy_profile: dict[str, Any],
+        signal_overlay: dict[str, Any] | None,
     ) -> str:
         payload = {
             "parsed_signal": parsed_signal,
             "resolved_asset": resolved_asset,
+            "wallet_snapshot": wallet_snapshot,
+            "market_snapshot": market_snapshot,
+            "risk_snapshot": risk_snapshot,
+            "ta_snapshot": ta_snapshot,
             "strategy_profile": strategy_profile,
+            "signal_overlay": signal_overlay,
         }
         return (
             "Make a structured trade decision from this context.\n"
-            "Load the relevant OKX skill prompts on demand. Use run_onchainos_readonly for wallet, market, risk, and quote data. "
-            "Use app tools only for TA scoring and deterministic sizing.\n"
+            "Assume the enrichment stage already collected all external data. "
+            "Do not call any external tools.\n"
             "Do not assume that omitted context is safe.\n"
             + json.dumps(payload, ensure_ascii=True)
         )
@@ -163,52 +168,16 @@ class LangChainDecisionBackend:
         strategy_profile: dict[str, Any],
         signal_overlay: dict[str, Any] | None,
     ) -> DecisionAgentRuntimeContext:
-        def major_asset_execution_context_provider() -> dict[str, Any]:
-            if resolved_asset.get("asset_lane") != "major":
-                return {}
-            return {
-                "approved_major_mapping": resolved_asset.get("approved_major_mapping"),
-                "target_execution_chain": resolved_asset.get("target_execution_chain"),
-                "wallet_snapshot": wallet_snapshot,
-                "market_snapshot": market_snapshot,
-            }
-
-        def trade_sizing_inputs_provider() -> dict[str, Any]:
-            max_amount = strategy_profile.get("max_amount_per_trade_usd", 0.0)
-            lane_cap_key = (
-                "major_asset_max_amount_usd"
-                if resolved_asset.get("asset_lane") == "major"
-                else "regular_token_max_amount_usd"
-            )
-            lane_cap = strategy_profile.get(lane_cap_key, max_amount)
-            balance = wallet_snapshot.get("available_balance_usd", 0.0) if wallet_snapshot else 0.0
-            ta_score = ta_snapshot.get("ta_score", 0.0) if ta_snapshot else 0.0
-            recommended = min(float(max_amount), float(lane_cap), float(balance))
-            return {
-                "asset_lane": resolved_asset.get("asset_lane"),
-                "wallet_balance_usd": balance,
-                "max_amount_per_trade_usd": max_amount,
-                "lane_cap_usd": lane_cap,
-                "ta_score": ta_score,
-                "recommended_amount_usd": recommended,
-                "capped_amount_usd": recommended,
-            }
-
         return DecisionAgentRuntimeContext(
             user_id=str(strategy_profile.get("user_id") or "unknown"),
             parsed_signal=parsed_signal,
             resolved_asset=resolved_asset,
+            wallet_snapshot=wallet_snapshot,
+            market_snapshot=market_snapshot,
+            risk_snapshot=risk_snapshot,
+            ta_snapshot=ta_snapshot,
             strategy_profile=strategy_profile,
-            load_skill_provider=self.skill_registry.load_skill,
-            load_reference_provider=self.skill_registry.load_reference,
-            readonly_command_provider=self.readonly_runner.run,
-            preloaded_wallet_snapshot=wallet_snapshot,
-            preloaded_market_snapshot=market_snapshot,
-            preloaded_risk_snapshot=risk_snapshot,
-            preloaded_signal_overlay=signal_overlay,
-            major_asset_execution_context_provider=major_asset_execution_context_provider,
-            ta_score_provider=lambda: ta_snapshot,
-            trade_sizing_inputs_provider=trade_sizing_inputs_provider,
+            signal_overlay=signal_overlay,
         )
 
     def _extract_output(self, result) -> TradeDecisionOutput:

@@ -22,3 +22,12 @@ def build_checkpointer() -> Any:
 
 def build_thread_id(prefix: str, identifier: str) -> str:
     return f"{prefix}:{identifier}"
+
+
+def invoke_graph(graph: Any, state: Any, *, config: dict[str, Any], durability: str | None = None) -> Any:
+    if durability is None:
+        return graph.invoke(state, config=config)
+    try:
+        return graph.invoke(state, config=config, durability=durability)
+    except TypeError:
+        return graph.invoke(state, config=config)

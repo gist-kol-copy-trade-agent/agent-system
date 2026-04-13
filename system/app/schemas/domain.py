@@ -16,6 +16,11 @@ class ParsedSignal(TypedDict):
     target_reference_text: str | None
     stop_reference_text: str | None
     urgency: Literal["low", "normal", "high"] | None
+    resolved_symbol: str | None
+    resolved_contract_address: str | None
+    resolved_chain: str | None
+    resolved_token_name: str | None
+    resolved_decimals: int | None
     confidence: float
     reasoning_summary: str
 

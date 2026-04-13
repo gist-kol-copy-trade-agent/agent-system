@@ -24,6 +24,11 @@ class ParsedSignalOutput(BaseModel):
     target_reference_text: str | None = None
     stop_reference_text: str | None = None
     urgency: str | None = None
+    resolved_symbol: str | None = None
+    resolved_contract_address: str | None = None
+    resolved_chain: str | None = None
+    resolved_token_name: str | None = None
+    resolved_decimals: int | None = None
     confidence: float
     reasoning_summary: str
 
@@ -63,8 +68,8 @@ class LangChainParsingBackend:
                         "role": "user",
                         "content": (
                             "Parse this Telegram trading message into structured fields.\n"
-                            "If token identity is ambiguous, first load the relevant OKX skill prompt, "
-                            "then use run_onchainos_readonly with the commands described by that skill.\n"
+                            "If token identity is ambiguous or incomplete, first load the relevant OKX skill prompt, "
+                            "then use run_onchainos_readonly with the commands described by that skill to resolve token clues.\n"
                             f"Message:\n{message_text}"
                         ),
                     }
@@ -91,6 +96,11 @@ class LangChainParsingBackend:
             target_reference_text=output.target_reference_text,
             stop_reference_text=output.stop_reference_text,
             urgency=output.urgency,  # type: ignore[arg-type]
+            resolved_symbol=output.resolved_symbol,
+            resolved_contract_address=output.resolved_contract_address,
+            resolved_chain=output.resolved_chain,
+            resolved_token_name=output.resolved_token_name,
+            resolved_decimals=output.resolved_decimals,
             confidence=output.confidence,
             reasoning_summary=output.reasoning_summary,
         )
@@ -108,7 +118,8 @@ class LangChainParsingBackend:
         system_prompt = (
             "You are a parsing agent for Telegram KOL trading messages. "
             "Classify each message into one of: trade_call, trade_update, exit_signal, noise. "
-            "Extract symbol, contract address, chain hint, entry, target, stop, urgency, confidence, and reasoning summary. "
+            "Extract raw symbol, raw contract address, raw chain hint, entry, target, stop, urgency, confidence, and reasoning summary. "
+            "When needed, also resolve the best supported token clue set: resolved symbol, resolved contract address, resolved chain, token name, and decimals. "
             "For OKX OnchainOS capabilities, use the skills pattern with progressive disclosure: "
             "load the relevant skill prompt first, then follow its command guidance via run_onchainos_readonly when needed. "
             "Do not invent token contracts or chains if the evidence is weak. "

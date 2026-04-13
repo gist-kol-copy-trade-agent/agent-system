@@ -16,6 +16,9 @@ class ModelSettings(BaseModel):
 
 class LangGraphSettings(BaseModel):
     checkpointer_backend: Literal["memory", "postgres"] = "memory"
+    signal_durability: Literal["exit", "async", "sync"] = "sync"
+    exit_durability: Literal["exit", "async", "sync"] = "sync"
+    command_durability: Literal["exit", "async", "sync"] = "async"
     thread_prefix_signal: str = "signal"
     thread_prefix_position: str = "position"
     thread_prefix_command: str = "command"

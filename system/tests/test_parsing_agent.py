@@ -17,6 +17,11 @@ class FakeParsingBackend:
                 "target_reference_text": None,
                 "stop_reference_text": None,
                 "urgency": None,
+                "resolved_symbol": None,
+                "resolved_contract_address": None,
+                "resolved_chain": None,
+                "resolved_token_name": None,
+                "resolved_decimals": None,
                 "confidence": 0.2,
                 "reasoning_summary": "classified as noise",
             }
@@ -33,6 +38,11 @@ class FakeParsingBackend:
                 "target_reference_text": None,
                 "stop_reference_text": None,
                 "urgency": "normal",
+                "resolved_symbol": "ETH",
+                "resolved_contract_address": None,
+                "resolved_chain": "xlayer",
+                "resolved_token_name": "Ethereum",
+                "resolved_decimals": 18,
                 "confidence": 0.8,
                 "reasoning_summary": "classified as exit_signal",
             }
@@ -49,6 +59,11 @@ class FakeParsingBackend:
                 "target_reference_text": None,
                 "stop_reference_text": None,
                 "urgency": "high",
+                "resolved_symbol": "PEPE",
+                "resolved_contract_address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                "resolved_chain": "ethereum",
+                "resolved_token_name": "Pepe",
+                "resolved_decimals": 18,
                 "confidence": 0.9,
                 "reasoning_summary": "classified as trade_call",
             }
@@ -64,6 +79,11 @@ class FakeParsingBackend:
             "target_reference_text": "target 3500",
             "stop_reference_text": "stop 3100",
             "urgency": "high",
+            "resolved_symbol": "ETH",
+            "resolved_contract_address": None,
+            "resolved_chain": "xlayer",
+            "resolved_token_name": "Ethereum",
+            "resolved_decimals": 18,
             "confidence": 0.85,
             "reasoning_summary": "classified as trade_call",
         }
@@ -80,6 +100,8 @@ def test_parse_trade_call_major_asset() -> None:
     assert result["is_actionable"] is True
     assert result["raw_symbol"] == "ETH"
     assert result["raw_chain_hint"] == "xlayer"
+    assert result["resolved_symbol"] == "ETH"
+    assert result["resolved_chain"] == "xlayer"
     assert result["urgency"] == "high"
     assert result["confidence"] >= 0.7
 
@@ -95,6 +117,8 @@ def test_parse_trade_call_regular_token_with_contract() -> None:
     assert result["raw_symbol"] == "PEPE"
     assert result["raw_contract_address"] == "0x6982508145454ce325ddbe47a25d4ec3d2311933"
     assert result["raw_chain_hint"] == "ethereum"
+    assert result["resolved_contract_address"] == "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    assert result["resolved_chain"] == "ethereum"
 
 
 def test_parse_exit_signal() -> None:
@@ -107,6 +131,7 @@ def test_parse_exit_signal() -> None:
     assert result["message_type"] == "exit_signal"
     assert result["is_actionable"] is True
     assert result["raw_symbol"] == "ETH"
+    assert result["resolved_symbol"] == "ETH"
 
 
 def test_parse_noise_message() -> None:

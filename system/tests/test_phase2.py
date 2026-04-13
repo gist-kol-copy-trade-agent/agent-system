@@ -1,5 +1,6 @@
 from app.agents.wallet_command import WalletCommandAgent, WalletCommandOutput
 from app.agents.decision import DecisionAgent
+from app.agents.enrichment import EnrichmentAgent
 from app.agents.exit import ExitAgent
 from app.agents.parsing import ParsingAgent
 from app.adapters.scraper.client import ScraperClient, ScraperRegistrationRequest
@@ -224,6 +225,7 @@ def test_webhook_enqueue_and_runtime_invocation() -> None:
 
     strategy_service = StrategyProfileService(InMemoryStrategyProfileRepository())
     from tests.test_decision_agent import FakeDecisionBackend
+    from tests.test_enrichment_agent import FakeEnrichmentBackend
     from tests.test_parsing_agent import FakeParsingBackend
 
     runtime = SignalWorkflowRuntime(
@@ -231,6 +233,7 @@ def test_webhook_enqueue_and_runtime_invocation() -> None:
         SignalIntakeGraphService(
             parsing_agent=ParsingAgent(backend=FakeParsingBackend()),
             strategy_profiles=strategy_service,
+            enrichment_agent=EnrichmentAgent(backend=FakeEnrichmentBackend()),
             decision_agent=DecisionAgent(backend=FakeDecisionBackend()),
         ),
     )
@@ -253,6 +256,45 @@ def test_webhook_enqueue_and_runtime_invocation() -> None:
     assert workflow.thread_id == "signal:evt2"
     assert state["parsed_signal"]["message_type"] == "trade_call"
     assert state["policy_gate_result"]["action"] in {"execute", "skip", "block"}
+
+
+def test_signal_workflow_runtime_marks_failed_runs() -> None:
+    message_repo = InMemorySourceMessageRepository()
+    workflow_repo = InMemoryWorkflowRunRepository()
+    intake = WebhookIntakeService(message_repo)
+    queue = SignalWorkflowQueueService(workflow_repo)
+
+    class FailingSignalGraph:
+        def run(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    runtime = SignalWorkflowRuntime(workflow_repo, FailingSignalGraph())  # type: ignore[arg-type]
+
+    payload = ScraperWebhookPayload(
+        event_id="evt-fail",
+        event_type="telegram.message.new",
+        source_id="u1:alpha_kol",
+        channel_name="alpha_kol",
+        message_id="m-fail",
+        message_text="Buy ETH now on X Layer",
+        message_timestamp="2026-01-01T00:00:00Z",
+        raw_payload={},
+    )
+    accepted = intake.accept_event(payload)
+    assert accepted is not None
+    workflow = queue.enqueue_signal(accepted)
+
+    try:
+        runtime.invoke(workflow)
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
+    else:
+        assert False, "expected runtime failure"
+
+    stored = workflow_repo._records[workflow.thread_id]
+    assert stored.status == "failed"
+    assert stored.last_node == "signal_graph_failed"
+    assert stored.run_metadata == {"error": "RuntimeError", "message": "boom"}
 
 
 def test_position_scheduler_enqueue_and_exit_runtime_invocation() -> None:

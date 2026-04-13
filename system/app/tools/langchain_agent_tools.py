@@ -4,8 +4,10 @@ from typing import Any
 
 from app.agents.runtime_context import (
     DecisionAgentRuntimeContext,
+    EnrichmentAgentRuntimeContext,
     ExitAgentRuntimeContext,
     ParsingAgentRuntimeContext,
+    SwapExecutionAgentRuntimeContext,
     WalletCommandRuntimeContext,
 )
 
@@ -77,10 +79,14 @@ def build_parsing_agent_tools() -> list[Any]:
 
 
 def build_decision_agent_tools() -> list[Any]:
+    return []
+
+
+def build_enrichment_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def load_okx_skill(
         skill_name: str,
-        runtime: ToolRuntime[DecisionAgentRuntimeContext] | None = None,
+        runtime: ToolRuntime[EnrichmentAgentRuntimeContext] | None = None,
     ) -> str:
         """Load an OKX OnchainOS skill prompt by name.
 
@@ -96,7 +102,7 @@ def build_decision_agent_tools() -> list[Any]:
     def load_okx_skill_reference(
         skill_name: str,
         relative_path: str,
-        runtime: ToolRuntime[DecisionAgentRuntimeContext] | None = None,
+        runtime: ToolRuntime[EnrichmentAgentRuntimeContext] | None = None,
     ) -> str:
         """Load a reference file inside a selected OKX skill.
 
@@ -112,7 +118,7 @@ def build_decision_agent_tools() -> list[Any]:
     @tool(parse_docstring=True)
     def run_onchainos_readonly(
         command: str,
-        runtime: ToolRuntime[DecisionAgentRuntimeContext] | None = None,
+        runtime: ToolRuntime[EnrichmentAgentRuntimeContext] | None = None,
     ) -> dict[str, Any]:
         """Execute a read-only onchainos CLI command and return parsed output.
 
@@ -123,33 +129,10 @@ def build_decision_agent_tools() -> list[Any]:
         if runtime is None or runtime.context is None:
             return {"ok": False, "error": "missing runtime context"}
         return runtime.context.readonly_command_provider(command)
-
-    @tool(parse_docstring=True)
-    def compute_ta_score(
-        runtime: ToolRuntime[DecisionAgentRuntimeContext] | None = None,
-    ) -> dict[str, Any]:
-        """Compute or load TA score for the current trade candidate."""
-
-        if runtime is None or runtime.context is None:
-            return {}
-        return runtime.context.ta_score_provider()
-
-    @tool(parse_docstring=True)
-    def build_trade_sizing_inputs(
-        runtime: ToolRuntime[DecisionAgentRuntimeContext] | None = None,
-    ) -> dict[str, Any]:
-        """Build deterministic sizing inputs and capped amount for the current candidate."""
-
-        if runtime is None or runtime.context is None:
-            return {}
-        return runtime.context.trade_sizing_inputs_provider()
-
     return [
         load_okx_skill,
         load_okx_skill_reference,
         run_onchainos_readonly,
-        compute_ta_score,
-        build_trade_sizing_inputs,
     ]
 
 
@@ -274,3 +257,54 @@ def build_exit_agent_tools() -> list[Any]:
         get_token_market_snapshot,
         compute_exit_ta_score,
     ]
+
+
+def build_swap_execution_agent_tools() -> list[Any]:
+    @tool(parse_docstring=True)
+    def load_okx_skill(
+        skill_name: str,
+        runtime: ToolRuntime[SwapExecutionAgentRuntimeContext] | None = None,
+    ) -> str:
+        """Load an OKX OnchainOS skill prompt by name.
+
+        Args:
+            skill_name: Skill directory name, typically okx-dex-swap.
+        """
+
+        if runtime is None or runtime.context is None:
+            return ""
+        return runtime.context.load_skill_provider(skill_name)
+
+    @tool(parse_docstring=True)
+    def load_okx_skill_reference(
+        skill_name: str,
+        relative_path: str,
+        runtime: ToolRuntime[SwapExecutionAgentRuntimeContext] | None = None,
+    ) -> str:
+        """Load a reference file inside a selected OKX skill.
+
+        Args:
+            skill_name: Skill directory name.
+            relative_path: Relative path inside the skill directory.
+        """
+
+        if runtime is None or runtime.context is None:
+            return ""
+        return runtime.context.load_reference_provider(skill_name, relative_path)
+
+    @tool(parse_docstring=True)
+    def run_onchainos_mutating_swap(
+        request: dict[str, Any],
+        runtime: ToolRuntime[SwapExecutionAgentRuntimeContext] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a bounded swap using already validated trade intent.
+
+        Args:
+            request: Validated swap execution request generated after policy approval.
+        """
+
+        if runtime is None or runtime.context is None:
+            return {"ok": False, "error": "missing runtime context"}
+        return runtime.context.mutating_swap_provider(request)
+
+    return [load_okx_skill, load_okx_skill_reference, run_onchainos_mutating_swap]
