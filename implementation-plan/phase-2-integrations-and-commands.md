@@ -7,6 +7,7 @@ Implement the user-facing control plane and external service integration layer.
 This phase should produce:
 
 - Telegram command handling,
+- wallet / command agent runtime,
 - `/trade-style` strategy profile flow,
 - scraper register/unregister integration,
 - scraper webhook intake endpoint,
@@ -27,7 +28,8 @@ Implement routing and handlers for:
 - `/history`
 - `/status`
 
-Start with deterministic handlers and add bounded model-assisted parsing only where required.
+Wallet-oriented commands should not be treated as plain deterministic handlers.
+They should use a bounded wallet / command agent with `okx-agentic-wallet` skill access.
 
 ## 2. `/trade-style` End-to-End Flow
 
@@ -47,11 +49,15 @@ This is a critical phase deliverable because later trade decisions depend on it.
 
 Implement `/start`-related runtime support:
 
-- wallet status lookup
-- login flow initiation
+- wallet / command agent
+- `okx-agentic-wallet` skill loading
+- wallet status lookup through model tool calls
+- login flow initiation through bounded command flow
 - OTP verification handling
-- address and balance fetch
+- address and balance fetch through model tool calls
 - readiness summary
+
+The app may still persist normalized wallet state, but the primary interaction path should be skill-guided LLM tool use rather than hardcoded business wrappers.
 
 ## 4. Scraper Client
 
@@ -98,7 +104,11 @@ Implement enough read-side logic for:
 - `/history`
 - `/status`
 
-These can start as DB-first views with optional enrichment from wallet and market adapters.
+These should use:
+
+- wallet / command agent + `okx-agentic-wallet` for wallet-native data
+- optional `okx-dex-market` for portfolio/PnL enrichment
+- DB-first views only for local history and durable app records
 
 ## Acceptance Criteria
 
@@ -111,7 +121,8 @@ These can start as DB-first views with optional enrichment from wallet and marke
 - `/follow` triggers scraper registration and stores the subscription mapping
 - `/stop` triggers scraper unregistration and deactivates the local source
 - webhook endpoint validates auth, deduplicates events, persists messages, and enqueues work
-- `/start` can show wallet + strategy readiness state
+- `/start` can show wallet + strategy readiness state through the wallet / command agent
+- `/status`, `/portfolio`, and `/history` use model-assisted OKX skill flows for wallet-origin data
 - command flows have integration tests for success and key failure paths
 
 ## References

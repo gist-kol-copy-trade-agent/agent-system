@@ -39,7 +39,6 @@ Examples:
 
 - `run_onchainos_readonly`
 - `get_position_snapshot`
-- `get_kol_followup_messages`
 
 ## 2.3 Scoring Tools
 
@@ -194,14 +193,43 @@ Returns:
 
 - exit signal breakdown
 
-### `get_kol_followup_messages`
-Reads from application DB.
+## 3.4 Wallet / Command Agent Tools
 
-Returns:
+### `load_okx_skill`
+Primary wallet command skill:
 
-- recent follow-up messages for the same source and token
+- `okx-agentic-wallet`
 
-## 3.4 Deterministic Execution Tools
+Optional portfolio support skill:
+
+- `okx-dex-market`
+
+### `load_okx_skill_reference`
+Use for wallet-skill references such as:
+
+- `references/cli-reference.md`
+- `references/new-user-guide.md`
+- `_shared/chain-support.md`
+
+### `run_onchainos_readonly`
+This is the primary wallet data path for model-assisted command handling.
+
+Typical commands:
+
+- `onchainos wallet status`
+- `onchainos wallet balance`
+- `onchainos wallet balance --chain <chain>`
+- `onchainos wallet addresses --chain <chain>`
+- `onchainos wallet history`
+- `onchainos wallet history --tx-hash ...`
+- `onchainos market portfolio-supported-chains`
+- `onchainos market portfolio-dex-history ...`
+- `onchainos market portfolio-recent-pnl ...`
+
+Wallet and balance flows should not rely on app-defined business wrappers as the main model-facing interface.
+The LLM should reason from the loaded skill plus the generic read-only command tool.
+
+## 3.5 Deterministic Execution Tools
 
 ### `execute_swap_buy`
 Wraps:
@@ -259,19 +287,24 @@ Tool outputs should also include `asset_lane` when lane-specific behavior affect
 
 Do not leak raw CLI fields upward if they are inconsistent.
 
-Normalize inside adapters.
+Normalize inside the command runner / parsing layer used by:
+
+- model-facing generic `onchainos` command tools,
+- deterministic execution nodes,
+- persistence mappers when raw payloads are stored.
 
 Example:
 
 - `priceImpactPercent` -> `price_impact_pct`
 - `swapTxHash` -> `swap_tx_hash`
 
-## 4.3 Separate adapter layer from tool layer
+## 4.3 Separate runtime layers clearly
 
 Suggested structure:
 
 ```text
-app/adapters/okx/*.py
+app/services/onchainos_runner.py
+app/services/okx_skills.py
 app/tools/*.py
 app/policies/*.py
 app/ta/*.py
@@ -279,29 +312,35 @@ app/ta/*.py
 
 Where:
 
-- adapters talk to OKX skills / CLI,
+- runner / skill services talk to OKX skills / CLI,
 - tools expose LangChain-compatible interfaces,
 - policies enforce deterministic rules,
 - TA computes indicator outputs.
 
-## 4.4 Prefer composite tools over many tiny tools
+## 4.4 Prefer skills plus a generic command tool over business wrappers
 
-Do not force the model to stitch together five low-level wallet calls if a single bounded tool can do it safely.
+For OKX-covered capabilities, the preferred model-facing pattern is:
+
+- load the relevant skill,
+- optionally load referenced docs,
+- call a generic read-only `onchainos` tool with the exact command.
 
 Good model-facing tools:
 
-- `get_wallet_context`
-- `get_token_market_snapshot`
-- `get_major_asset_execution_context`
-- `get_trade_candidate_context`
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
+- `compute_ta_score`
+- `build_trade_sizing_inputs`
 
 Bad model-facing tools:
 
-- `wallet_status_raw`
-- `wallet_addresses_raw`
-- `wallet_balance_raw`
+- `get_wallet_context`
+- `get_token_market_snapshot`
+- `get_token_risk`
+- `get_major_asset_execution_context`
 
-The model should consume compact, decision-ready objects.
+Those business wrappers may still exist for deterministic nodes, but they should not be the primary LLM integration surface.
 
 ## 5. Suggested LangChain Registration
 

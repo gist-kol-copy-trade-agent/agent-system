@@ -24,6 +24,9 @@ class UserStrategyProfile(BaseModel):
     default_stop_loss_pct: float
     default_take_profit_pct: float
     max_holding_time_hours: int
+    trailing_enabled: bool = True
+    trailing_activation_profit_pct: float
+    trailing_drawdown_pct: float
     updated_at: str | None = None
     updated_by: str = "system"
     version: int = 1
@@ -46,3 +49,6 @@ class StrategyProfilePatch(BaseModel):
     default_stop_loss_pct: float | None = None
     default_take_profit_pct: float | None = None
     max_holding_time_hours: int | None = None
+    trailing_enabled: bool | None = None
+    trailing_activation_profit_pct: float | None = None
+    trailing_drawdown_pct: float | None = None

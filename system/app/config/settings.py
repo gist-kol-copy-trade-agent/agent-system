@@ -29,11 +29,16 @@ class WalletSettings(BaseModel):
 
 
 class PersistenceSettings(BaseModel):
-    database_url: str = "sqlite+pysqlite:///:memory:"
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/okx_agent"
+
+
+class MonitoringSettings(BaseModel):
+    position_refresh_interval_seconds: int = 60
+    cron_exit_evaluation_enabled: bool = True
 
 
 class AppSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="OKX_AGENT_", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="OKX_AGENT_", env_nested_delimiter="__", case_sensitive=False)
 
     environment: Literal["development", "staging", "production"] = "development"
     timezone: str = "Asia/Ho_Chi_Minh"
@@ -41,6 +46,7 @@ class AppSettings(BaseSettings):
     langgraph: LangGraphSettings = Field(default_factory=LangGraphSettings)
     wallet: WalletSettings = Field(default_factory=WalletSettings)
     persistence: PersistenceSettings = Field(default_factory=PersistenceSettings)
+    monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
 
 
 @lru_cache(maxsize=1)

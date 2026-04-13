@@ -1,0 +1,75 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.http_app import ScraperWebhookHandler
+from app.schemas.commands import CommandResponse
+from app.telegram_bot import TelegramCommandService
+from app.services.webhook_intake import AcceptedWebhookEvent, WebhookIntakeService
+from app.persistence.repositories import InMemorySourceMessageRepository
+from app.schemas.webhook import ScraperWebhookPayload
+
+
+@dataclass
+class _FakeWorkflow:
+    thread_id: str
+    workflow_type: str
+
+
+class _FakeSignalQueue:
+    def enqueue_signal(self, accepted: AcceptedWebhookEvent) -> _FakeWorkflow:
+        return _FakeWorkflow(thread_id=accepted.thread_id, workflow_type="signal-intake")
+
+
+class _FakeSignalRuntime:
+    def invoke(self, workflow: _FakeWorkflow) -> dict:
+        return {"policy_gate_result": {"action": "execute"}}
+
+
+class _FakeReadiness:
+    def run(self):
+        return type("Result", (), {"ok": True, "checks": {"onchainos_binary": {"ok": True, "detail": "/usr/bin/onchainos"}}})()
+
+
+class _FakeRuntime:
+    def __init__(self) -> None:
+        self.webhook_intake = WebhookIntakeService(InMemorySourceMessageRepository())
+        self.signal_queue = _FakeSignalQueue()
+        self.signal_runtime = _FakeSignalRuntime()
+        self.readiness = _FakeReadiness()
+
+
+class _FakeRouter:
+    def handle(self, envelope) -> CommandResponse:
+        return CommandResponse(ok=True, command="status", message=f"echo:{envelope.raw_text}", payload={})
+
+
+def test_scraper_webhook_handler_accepts_signed_payload() -> None:
+    runtime = _FakeRuntime()
+    handler = ScraperWebhookHandler(runtime, webhook_secret="secret")
+    payload = ScraperWebhookPayload(
+        event_id="evt-1",
+        event_type="telegram.message.new",
+        source_id="u1:alpha",
+        channel_name="alpha",
+        message_id="m1",
+        message_text="buy eth",
+        message_timestamp="2026-01-01T00:00:00Z",
+        raw_payload={},
+    )
+    body = payload.model_dump_json().encode()
+    signature = runtime.webhook_intake.build_signature(body=body, timestamp="123", secret="secret")
+
+    result = handler.handle(body=body, timestamp="123", signature=signature)
+
+    assert result.status_code == 202
+    assert result.body["ok"] is True
+    assert result.body["thread_id"] == "signal:evt-1"
+    assert result.body["policy_action"] == "execute"
+
+
+def test_telegram_command_service_routes_text_to_router() -> None:
+    service = TelegramCommandService(_FakeRouter())
+    result = service.handle_text(user_id="u1", chat_id="c1", raw_text="/status")
+    assert result.ok is True
+    assert result.text == "echo:/status"

@@ -84,6 +84,12 @@ At the same time, it still benefits from LangChain abstractions for:
 - prompt management,
 - structured agent outputs.
 
+This rule also applies to OKX wallet capabilities:
+
+- if a capability is primarily expressed through an OKX skill such as `okx-agentic-wallet`,
+- the agent should load and use that skill through LangChain tool calls,
+- not bypass it with app-specific deterministic wrappers as the primary interaction pattern.
+
 ## 6. Team Rule of Thumb
 
 When adding a new capability, ask:

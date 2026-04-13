@@ -2,15 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from dataclasses import dataclass
 
 from app.graphs.runtime import build_thread_id
-from app.persistence.repositories import (
-    SourceMessageRecord,
-    SourceMessageRepository,
-    WorkflowRunRecord,
-    WorkflowRunRepository,
-    utc_now_iso,
-)
+from app.persistence.repositories import SourceMessageRecord, SourceMessageRepository, utc_now_iso
 from app.schemas.webhook import ScraperWebhookPayload
 
 
@@ -18,10 +13,16 @@ class WebhookAuthError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class AcceptedWebhookEvent:
+    payload: ScraperWebhookPayload
+    thread_id: str
+    deduplicated: bool
+
+
 class WebhookIntakeService:
-    def __init__(self, message_repository: SourceMessageRepository, workflow_repository: WorkflowRunRepository) -> None:
+    def __init__(self, message_repository: SourceMessageRepository) -> None:
         self.message_repository = message_repository
-        self.workflow_repository = workflow_repository
 
     @staticmethod
     def build_signature(*, body: bytes, timestamp: str, secret: str) -> str:
@@ -33,9 +34,9 @@ class WebhookIntakeService:
         if not hmac.compare_digest(expected, provided_signature):
             raise WebhookAuthError("Invalid scraper signature.")
 
-    def accept_event(self, payload: ScraperWebhookPayload) -> str:
+    def accept_event(self, payload: ScraperWebhookPayload) -> AcceptedWebhookEvent | None:
         if self.message_repository.has_event(payload.event_id):
-            return "duplicate_ignored"
+            return None
 
         self.message_repository.save(
             SourceMessageRecord(
@@ -49,15 +50,8 @@ class WebhookIntakeService:
                 received_at=utc_now_iso(),
             )
         )
-        thread_id = build_thread_id("signal", payload.event_id)
-        self.workflow_repository.save(
-            WorkflowRunRecord(
-                thread_id=thread_id,
-                workflow_type="signal-intake",
-                related_signal_id=payload.event_id,
-                related_position_id=None,
-                status="pending",
-                last_node="webhook_received",
-            )
+        return AcceptedWebhookEvent(
+            payload=payload,
+            thread_id=build_thread_id("signal", payload.event_id),
+            deduplicated=False,
         )
-        return "accepted"

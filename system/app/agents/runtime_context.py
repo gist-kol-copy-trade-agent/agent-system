@@ -42,3 +42,27 @@ class DecisionAgentRuntimeContext:
     major_asset_execution_context_provider: Callable[[], JSONDict] = field(default=lambda: {})
     ta_score_provider: Callable[[], JSONDict] = field(default=lambda: {})
     trade_sizing_inputs_provider: Callable[[], JSONDict] = field(default=lambda: {})
+
+
+@dataclass
+class WalletCommandRuntimeContext:
+    user_id: str
+    command_name: str
+    raw_text: str
+    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
+    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+
+
+@dataclass
+class ExitAgentRuntimeContext:
+    user_id: str
+    position_snapshot: JSONDict
+    strategy_profile: JSONDict
+    trailing_state: JSONDict | None = None
+    load_skill_provider: Callable[[str], str] = field(default=lambda _skill_name: "")
+    load_reference_provider: Callable[[str, str], str] = field(default=lambda _skill_name, _relative_path: "")
+    readonly_command_provider: Callable[[str], JSONDict] = field(default=lambda _command: {})
+    position_snapshot_provider: Callable[[], JSONDict] = field(default=lambda: {})
+    exit_market_snapshot_provider: Callable[[], JSONDict] = field(default=lambda: {})
+    exit_ta_score_provider: Callable[[], JSONDict] = field(default=lambda: {})

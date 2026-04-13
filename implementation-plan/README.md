@@ -19,7 +19,7 @@ Structure:
 ### Phase 2
 
 - [phase-2-integrations-and-commands.md](phase-2-integrations-and-commands.md)
-- Goal: implement Telegram command handling, scraper integration, and user strategy profile flows
+- Goal: implement Telegram command handling, wallet/command agent flows, scraper integration, and user strategy profile flows
 
 ### Phase 3
 
@@ -29,7 +29,7 @@ Structure:
 ### Phase 4
 
 - [phase-4-position-monitoring-and-hardening.md](phase-4-position-monitoring-and-hardening.md)
-- Goal: implement exit monitoring, reliability controls, and production-grade observability/hardening for the PoC
+- Goal: implement cron-driven position exit monitoring, reliability controls, and production-grade observability/hardening for the PoC
 
 ## Recommended Execution Order
 

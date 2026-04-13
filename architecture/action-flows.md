@@ -109,14 +109,23 @@ Persist:
   - market metadata snapshot
 
 ### Step 6: Load Wallet Context
-Deterministic.
+Model-assisted.
 
-Model call: no
+Model call: yes
 
-Tools:
+Agent:
 
-- not a dedicated business wrapper
-- wallet data should come from OKX skill-guided `onchainos` commands or deterministic execution nodes
+- `Decision Agent`
+
+Tools exposed:
+
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
+
+Required skill:
+
+- `okx-agentic-wallet`
 
 Rules:
 
@@ -228,45 +237,113 @@ Persist:
 
 - outbound Telegram notification record
 
-## 2. Exit Trigger From KOL Follow-Up Message
+## 3. Wallet / Balance Commands
 
-## 2.1 Goal
+## 3.1 Goal
 
-Exit an active position when a new message strongly implies an exit.
+Handle wallet-oriented Telegram commands using OKX skill-guided model reasoning rather than deterministic business wrappers.
 
-## 2.2 Flow
+Covered commands:
 
-### Step 1: Ingest Follow-Up Message
+- `/start`
+- `/status`
+- `/portfolio`
+- `/history`
+
+## 3.2 Flow
+
+### Step 1: Ingest Command
 Deterministic.
 
-Persist raw message and source mapping.
+Persist raw command event if needed.
 
-### Step 2: Parse Exit Intent
+### Step 2: Interpret Wallet Intent
 Model call: yes
 
 Agent:
 
-- `Parsing Agent`
+- `Wallet / Command Agent`
 
-Output:
+Tools exposed:
 
-- `message_type`
-- `is_exit_signal`
-- referenced token / position hints
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 
-### Step 3: Match To Active Position
+Required skill:
+
+- `okx-agentic-wallet`
+
+Optional supporting skill:
+
+- `okx-dex-market` for portfolio or PnL-related follow-up
+
+Expected output:
+
+- resolved wallet intent
+- requested command mode
+- any required parameters still missing
+
+### Step 3: Execute Skill-Guided Read Path
+Model call: yes
+
+Agent:
+
+- `Wallet / Command Agent`
+
+Behavior:
+
+- load `okx-agentic-wallet`
+- issue read-only `onchainos` calls for status, balance, addresses, or history
+- optionally use `okx-dex-market` for portfolio market/PnL context
+
+Persist:
+
+- wallet readiness snapshot when relevant
+- command response audit event
+
+### Step 4: Deterministic Post-Processing
 Deterministic.
 
-Use local DB to match:
+Rules:
 
-- source channel
-- token
-- chain
-- active position id
+- normalize returned payloads for Telegram presentation
+- store any durable wallet session metadata needed by the app
+- do not let the model mutate trading state directly
 
-If no active position matches, stop.
+## 2. Scheduled Exit Evaluation
 
-### Step 4: Refresh Exit Context
+## 2.1 Goal
+
+Reevaluate an active position on a schedule and decide whether to:
+
+- hold,
+- arm trailing logic,
+- fire a trailing exit,
+- hard exit now.
+
+## 2.2 Flow
+
+### Step 1: Scheduled Position Poll
+Deterministic.
+
+Load active positions that are due for reevaluation.
+
+Persist:
+
+- scheduler tick or cycle id
+- position ids selected for reevaluation
+
+### Step 2: Load Position and Strategy Context
+Deterministic.
+
+Load:
+
+- position snapshot
+- trailing state
+- user strategy profile
+
+### Step 3: Refresh Exit Context
 Deterministic.
 
 Tools:
@@ -275,7 +352,12 @@ Tools:
 - `get_token_market_snapshot`
 - `compute_exit_ta_score`
 
-### Step 5: Exit Decision
+Persist:
+
+- market refresh snapshot
+- exit TA snapshot
+
+### Step 4: Exit Decision
 Model call: yes
 
 Agent:
@@ -288,7 +370,14 @@ Tools exposed:
 - `get_token_market_snapshot`
 - `compute_exit_ta_score`
 
-### Step 6: Exit Policy Gate
+Expected output:
+
+- `hold | exit_hard | exit_trailing_arm | exit_trailing_fire`
+- rationale
+- confidence
+- suggested sell fraction if partial exit is ever enabled later
+
+### Step 5: Exit Policy Gate
 Deterministic.
 
 Checks:
@@ -297,6 +386,21 @@ Checks:
 - liquidity still available
 - quote exists
 - sell route acceptable
+- trailing state transition is valid
+- hard stop / TP / time rule is compatible with policy
+
+Persist:
+
+- exit policy result
+- failure reasons if blocked
+
+### Step 6: Persist Hold or Trailing Update
+Deterministic.
+
+If result is:
+
+- `hold`, persist monitoring outcome only
+- `exit_trailing_arm`, persist updated trailing state only
 
 ### Step 7: Execute Exit
 Deterministic.
@@ -310,47 +414,6 @@ Persist:
 - exit tx hash
 - realized output
 - position closed state
-
-## 3. Exit Trigger From Price / TA / Risk Rule
-
-## 3.1 Goal
-
-Exit without a new Telegram message when monitoring rules trigger.
-
-## 3.2 Flow
-
-### Step 1: Scheduled Position Poll
-Deterministic.
-
-Load active positions needing refresh.
-
-### Step 2: Refresh Data
-Deterministic.
-
-Tools:
-
-- `get_token_market_snapshot`
-- `compute_exit_ta_score`
-
-### Step 3: Determine Trigger Type
-Deterministic first.
-
-Rules:
-
-- static TP hit
-- static SL hit
-- trailing stop broken
-- max holding time exceeded
-- risk deterioration
-
-Only if signal is ambiguous should the system call the `Exit Agent`.
-
-### Step 4: Execute Exit
-Deterministic.
-
-Tools:
-
-- `execute_swap_sell`
 
 ## 4. `/start`
 

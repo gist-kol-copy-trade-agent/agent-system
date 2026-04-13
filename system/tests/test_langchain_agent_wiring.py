@@ -5,8 +5,15 @@ from typing import Any
 import pytest
 
 from app.agents.decision import LangChainDecisionBackend
+from app.agents.exit import LangChainExitBackend
 from app.agents.parsing import LangChainParsingBackend
-from app.agents.runtime_context import DecisionAgentRuntimeContext, ParsingAgentRuntimeContext
+from app.agents.runtime_context import (
+    DecisionAgentRuntimeContext,
+    ExitAgentRuntimeContext,
+    ParsingAgentRuntimeContext,
+    WalletCommandRuntimeContext,
+)
+from app.agents.wallet_command import LangChainWalletCommandBackend
 
 
 def test_parsing_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
@@ -112,3 +119,53 @@ def test_decision_backend_uses_runtime_context_instead_of_prompt_stuffing() -> N
     assert "risk_snapshot" not in payload_text
     assert "ta_snapshot" not in payload_text
     assert backend._agent.context.preloaded_wallet_snapshot == {"logged_in": True, "available_balance_usd": 500.0}
+
+
+def test_wallet_command_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainWalletCommandBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is WalletCommandRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "run_onchainos_readonly",
+    }
+
+
+def test_exit_backend_registers_bound_tools_and_context_schema(monkeypatch) -> None:
+    langchain = pytest.importorskip("langchain.agents")
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_agent(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(langchain, "create_agent", fake_create_agent)
+
+    backend = LangChainExitBackend()
+    backend._get_agent()
+
+    kwargs = captured["kwargs"]
+    assert kwargs["context_schema"] is ExitAgentRuntimeContext
+    assert {tool.name for tool in kwargs["tools"]} == {
+        "load_okx_skill",
+        "load_okx_skill_reference",
+        "get_position_snapshot",
+        "get_token_market_snapshot",
+        "compute_exit_ta_score",
+    }

@@ -43,18 +43,14 @@ Implement the LangGraph flow for:
 
 ## 3. OKX Adapter Implementations
 
-Implement production-ready wrappers for:
+Implement the production-ready OKX integration runtime for agents and deterministic nodes:
 
-- wallet context fetch
-- token search and price info
-- token advanced info
-- security token scan
-- market price and kline
-- signal list
-- swap quote
-- swap execute
+- OKX skill registry / loader
+- local `onchainos` CLI runner on the server
+- read-only command execution path for agent-facing tool calls
+- deterministic execution path for side-effecting commands such as `swap execute`
 
-Normalize outputs into internal schema objects.
+Avoid making business-specific wrappers like `get_wallet_context` the primary model-facing integration surface.
 
 ## 4. TA Tooling
 
@@ -72,7 +68,9 @@ Keep the TA system intentionally narrow for PoC.
 
 Implement the bounded decision agent:
 
-- consume structured context only
+- consume structured signal and strategy context
+- load OKX skills on demand
+- use `run_onchainos_readonly` for wallet, market, risk, and quote reads
 - no direct execution tools
 - output structured `TradeDecision`
 
@@ -114,6 +112,7 @@ Ensure the system can demonstrate:
 
 - a major-asset call routed to X Layer
 - a regular-token call following the full risk pipeline
+- wallet readiness and balance resolution performed through `okx-agentic-wallet` skill-guided model tool calls
 
 ## Acceptance Criteria
 
@@ -126,6 +125,7 @@ Ensure the system can demonstrate:
   - advanced-info risk enrichment
   - TA scoring
   - policy gate
+- wallet context used for decision is obtained via model-assisted skill flow, not adapter-first prompt stuffing
 - execution only happens after deterministic policy approval
 - successful execution creates:
   - trade decision record

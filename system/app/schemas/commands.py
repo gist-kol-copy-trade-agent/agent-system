@@ -17,3 +17,6 @@ class CommandResponse(BaseModel):
     command: CommandName
     message: str
     payload: dict = {}
+
+
+WALLET_AGENT_COMMANDS: set[str] = {"start", "status", "portfolio", "history"}

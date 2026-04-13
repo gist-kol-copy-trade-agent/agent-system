@@ -24,6 +24,9 @@ PRESET_PROFILES: dict[TradingStyle, dict] = {
         "default_stop_loss_pct": 5.0,
         "default_take_profit_pct": 12.0,
         "max_holding_time_hours": 72,
+        "trailing_enabled": True,
+        "trailing_activation_profit_pct": 8.0,
+        "trailing_drawdown_pct": 4.0,
     },
     "normal": {
         "major_asset_lane_enabled": True,
@@ -41,6 +44,9 @@ PRESET_PROFILES: dict[TradingStyle, dict] = {
         "default_stop_loss_pct": 7.0,
         "default_take_profit_pct": 20.0,
         "max_holding_time_hours": 96,
+        "trailing_enabled": True,
+        "trailing_activation_profit_pct": 12.0,
+        "trailing_drawdown_pct": 6.0,
     },
     "degen": {
         "major_asset_lane_enabled": True,
@@ -58,6 +64,9 @@ PRESET_PROFILES: dict[TradingStyle, dict] = {
         "default_stop_loss_pct": 10.0,
         "default_take_profit_pct": 30.0,
         "max_holding_time_hours": 120,
+        "trailing_enabled": True,
+        "trailing_activation_profit_pct": 18.0,
+        "trailing_drawdown_pct": 8.0,
     },
 }
 
@@ -120,6 +129,8 @@ class StrategyProfileService:
             "regular_token_max_amount_usd": r"regular token max amount to (\d+(?:\.\d+)?)",
             "max_slippage_pct_regular": r"regular token slippage to (\d+(?:\.\d+)?)",
             "max_holding_time_hours": r"holding time to (\d+)",
+            "trailing_activation_profit_pct": r"trailing activation(?: profit)? to (\d+(?:\.\d+)?)",
+            "trailing_drawdown_pct": r"trailing drawdown to (\d+(?:\.\d+)?)",
         }
         for field, pattern in numeric_patterns.items():
             match = re.search(pattern, text)

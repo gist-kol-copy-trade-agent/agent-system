@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: okx-agent-system
+Version: 0.1.0
+Summary: Phase 1 scaffold for the OKX agent architect system
+Requires-Python: >=3.11
+Requires-Dist: alembic>=1.14.0
+Requires-Dist: langchain>=1.0.0
+Requires-Dist: langgraph>=0.2.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: pydantic-settings>=2.4.0
+Requires-Dist: sqlalchemy>=2.0.32
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3.0; extra == "dev"

@@ -254,11 +254,10 @@ policy:
 ```yaml
 monitoring:
   position_refresh_interval_seconds: 60
-  reevaluate_on_new_message: true
+  cron_exit_evaluation_enabled: true
   reevaluate_on_price_update: false
   exit_priority:
     - hard_risk
-    - kol_exit_signal
     - stop_loss
     - take_profit
     - trailing_stop

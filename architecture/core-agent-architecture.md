@@ -85,11 +85,20 @@ The decision agent should not directly call raw execution tools.
 ### 4.3 Exit Agent
 Purpose:
 
-- interpret follow-up KOL messages and market conditions,
-- recommend whether an active position should be exited,
+- interpret active position state, market conditions, and user settings,
+- recommend whether an active position should be held, hard-exited, or managed via trailing logic,
 - output a structured exit decision.
 
 The exit agent should not directly mutate portfolio state.
+
+### 4.4 Wallet / Command Agent
+Purpose:
+
+- handle wallet-oriented command flows that depend on OKX skill instructions,
+- interpret `/start`, `/status`, `/portfolio`, and `/history` requests,
+- use `okx-agentic-wallet` skill guidance for login, verify, status, addresses, balances, and history lookups.
+
+This agent should not directly execute unrestricted trade side effects.
 
 ## 5. Why Not a Single Always-On General Agent
 
@@ -130,26 +139,28 @@ Recommended node sequence:
 Recommended node sequence:
 
 1. `load_position`
-2. `refresh_market_context`
-3. `refresh_ta`
-4. `check_kol_exit_signal`
-5. `exit_decision_agent`
-6. `apply_exit_policy_gate`
-7. `execute_exit`
-8. `persist_exit_result`
-9. `notify_telegram`
+2. `load_strategy_profile`
+3. `refresh_market_context`
+4. `refresh_ta`
+5. `build_exit_inputs`
+6. `exit_decision_agent`
+7. `apply_exit_policy_gate`
+8. `persist_hold_or_trailing_state`
+9. `execute_exit`
+10. `persist_exit_result`
+11. `notify_telegram`
 
 ## 6.3 Command Graphs
 
 Keep command flows simple and mostly deterministic:
 
-- `/start` -> wallet onboarding graph
+- `/start` -> wallet onboarding graph with wallet / command agent step
 - `/trade-style` -> strategy profile command graph
 - `/follow` -> source registration graph
 - `/stop` -> source pause graph
-- `/portfolio` -> portfolio summary graph
-- `/history` -> local history + optional analytics graph
-- `/status` -> readiness graph
+- `/portfolio` -> portfolio summary graph with wallet / command agent enrichment
+- `/history` -> wallet / command agent + local history graph
+- `/status` -> readiness graph with wallet / command agent check
 
 ## 7. Where the Model Should Be Called
 
@@ -158,11 +169,11 @@ The model should only be called at ambiguity-heavy steps:
 - Telegram message classification and extraction
 - decision synthesis
 - exit decision synthesis
+- wallet / balance / history / status command handling through OKX skills
 - optional user-facing summary generation
 
 The model should not be the primary decision maker for:
 
-- wallet authentication status,
 - token contract resolution after deterministic search results exist,
 - TA math,
 - security verdict interpretation,
@@ -171,6 +182,11 @@ The model should not be the primary decision maker for:
 - execution eligibility.
 
 It also should not decide whether a token is in the major-asset allowlist. That is a deterministic product rule.
+
+Wallet and balance retrieval are a special case:
+
+- the underlying OKX capability is still invoked through model tool calls using `okx-agentic-wallet`,
+- but any final trading permission checks that depend on wallet state remain deterministic after the model step.
 
 ## 8. Tool Exposure Strategy
 
@@ -218,11 +234,28 @@ Expose:
 - `get_position_snapshot`
 - `get_token_market_snapshot`
 - `compute_exit_ta_score`
-- `get_kol_followup_messages`
 
 Do not expose direct write tools.
 
-## 8.4 Execution Tools
+## 8.4 Tools Exposed to Wallet / Command Agent
+
+Expose:
+
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
+
+Primary skill:
+
+- `okx-agentic-wallet`
+
+Optional supporting skills:
+
+- `okx-dex-market` for portfolio-oriented market context
+
+Do not expose unrestricted trade execution tools in generic command flows.
+
+## 8.5 Execution Tools
 
 Execution tools should be called only by deterministic graph nodes after policy checks pass.
 
@@ -331,7 +364,7 @@ telegram_summary
 ### 11.3 Exit Agent Output
 
 ```text
-decision: exit_now | hold | reduce | block
+decision: hold | exit_hard | exit_trailing_arm | exit_trailing_fire
 exit_reason
 confidence
 telegram_summary

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -6,9 +6,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.persistence.base import Base
 
 
+def now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class User(Base, TimestampMixin):
@@ -74,8 +78,8 @@ class SourceMessage(Base):
     message_text: Mapped[str] = mapped_column(Text)
     message_url: Mapped[str | None] = mapped_column(String(1024))
     raw_payload_json: Mapped[dict] = mapped_column(JSON)
-    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class ParsedSignalCandidate(Base):
@@ -89,7 +93,7 @@ class ParsedSignalCandidate(Base):
     is_actionable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     parsed_json: Mapped[dict] = mapped_column(JSON)
     parse_confidence: Mapped[float | None] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class AssetResolution(Base):
@@ -103,7 +107,7 @@ class AssetResolution(Base):
     resolved_signal_chain: Mapped[str | None] = mapped_column(String(64))
     token_contract_address: Mapped[str | None] = mapped_column(String(255))
     resolution_json: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class EnrichmentSnapshot(Base):
@@ -117,7 +121,7 @@ class EnrichmentSnapshot(Base):
     signal_overlay_json: Mapped[dict | None] = mapped_column(JSON)
     ta_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
     strategy_profile_version: Mapped[int | None] = mapped_column(Integer)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class TradeDecisionModel(Base):
@@ -132,7 +136,7 @@ class TradeDecisionModel(Base):
     recommended_amount_usd: Mapped[float | None] = mapped_column()
     capped_amount_usd: Mapped[float | None] = mapped_column()
     decision_json: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class TradeExecution(Base):
@@ -156,7 +160,7 @@ class TradeExecution(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
     execution_json: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class Position(Base, TimestampMixin):
@@ -175,6 +179,11 @@ class Position(Base, TimestampMixin):
     entry_execution_id: Mapped[str | None] = mapped_column(String(255))
     entry_price_usd: Mapped[float | None] = mapped_column()
     entry_amount_usd: Mapped[float] = mapped_column()
+    entry_token_amount: Mapped[float | None] = mapped_column()
+    current_price_usd: Mapped[float | None] = mapped_column()
+    peak_price_since_open_usd: Mapped[float | None] = mapped_column()
+    trailing_state_json: Mapped[dict | None] = mapped_column(JSON)
+    last_exit_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     status: Mapped[str] = mapped_column(String(32), default="open", index=True)
     opened_at: Mapped[datetime | None] = mapped_column(DateTime)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -188,7 +197,7 @@ class PositionEvent(Base):
     event_type: Mapped[str] = mapped_column(String(64))
     event_reason_code: Mapped[str | None] = mapped_column(String(128))
     event_json: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class TelegramNotification(Base):
@@ -203,7 +212,7 @@ class TelegramNotification(Base):
     message_text: Mapped[str] = mapped_column(Text)
     send_status: Mapped[str] = mapped_column(String(32))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class WorkflowRun(Base, TimestampMixin):
@@ -220,6 +229,22 @@ class WorkflowRun(Base, TimestampMixin):
     run_metadata_json: Mapped[dict | None] = mapped_column(JSON)
 
 
+class PositionExitEvaluation(Base):
+    __tablename__ = "position_exit_evaluations"
+    __table_args__ = (UniqueConstraint("position_id", "cycle_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    position_id: Mapped[str] = mapped_column(String(255), index=True)
+    cycle_id: Mapped[str] = mapped_column(String(255), index=True)
+    decision: Mapped[str] = mapped_column(String(64), index=True)
+    decision_reason_code: Mapped[str] = mapped_column(String(128))
+    trailing_state_json: Mapped[dict | None] = mapped_column(JSON)
+    market_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
+    ta_snapshot_json: Mapped[dict | None] = mapped_column(JSON)
+    evaluation_json: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
@@ -229,4 +254,4 @@ class AuditEvent(Base):
     entity_type: Mapped[str] = mapped_column(String(64), index=True)
     entity_id: Mapped[str] = mapped_column(String(255), index=True)
     event_json: Mapped[dict] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

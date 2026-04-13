@@ -86,3 +86,91 @@ class TASnapshot(TypedDict):
     liquidity_gate_passed: bool | None
     ta_score: float
     ta_summary: str
+
+
+class PositionSnapshot(TypedDict):
+    position_id: str
+    user_id: str
+    source_id: str
+    asset_lane: AssetLane
+    chain: str
+    symbol: str
+    token_contract_address: str | None
+    wallet_address: str
+    status: Literal["open", "closed"]
+    entry_price_usd: float | None
+    entry_amount_usd: float
+    entry_token_amount: float | None
+    current_price_usd: float | None
+    unrealized_pnl_pct: float | None
+    holding_time_hours: float | None
+    opened_at: str | None
+    last_evaluated_at: str | None
+
+
+class TrailingState(TypedDict):
+    armed: bool
+    activated_at: str | None
+    activation_price_usd: float | None
+    peak_price_usd: float | None
+    trailing_drawdown_pct: float | None
+    last_action: Literal["hold", "armed", "fired", "reset"] | None
+
+
+class ExitMarketSnapshot(TypedDict):
+    asset_lane: AssetLane
+    chain: str
+    current_price_usd: float | None
+    liquidity_usd: float | None
+    volume_24h_usd: float | None
+    quote_available: bool
+    quote_price_impact_pct: float | None
+    kline_window: list[dict]
+
+
+class ExitTASnapshot(TypedDict):
+    asset_lane: AssetLane
+    entry_price_usd: float | None
+    current_price_usd: float | None
+    peak_price_usd: float | None
+    unrealized_pnl_pct: float | None
+    drawdown_from_peak_pct: float | None
+    hard_stop_hit: bool
+    hard_take_profit_hit: bool
+    trailing_activation_hit: bool
+    trailing_fire_hit: bool
+    max_holding_time_hit: bool
+    exit_ta_summary: str
+
+
+class ExitDecision(TypedDict):
+    asset_lane: AssetLane
+    decision: Literal["hold", "exit_hard", "exit_trailing_arm", "exit_trailing_fire"]
+    decision_reason_code: str
+    confidence: float
+    rationale_summary: str
+    telegram_summary: str
+
+
+class ExitExecutionRequest(TypedDict):
+    asset_lane: AssetLane
+    position_id: str
+    side: Literal["sell"]
+    chain: str
+    wallet_address: str
+    from_token: str
+    to_token: str
+    readable_amount: str
+    slippage_pct: float | None
+
+
+class ExitExecutionResult(TypedDict):
+    position_id: str
+    success: bool
+    execution_id: str | None
+    approve_tx_hash: str | None
+    swap_tx_hash: str | None
+    realized_output_amount: str | None
+    realized_output_symbol: str | None
+    error_code: str | None
+    error_message: str | None

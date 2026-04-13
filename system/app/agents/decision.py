@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.agents.runtime_context import DecisionAgentRuntimeContext
 from app.config.settings import get_settings
+from app.services.onchainos_runner import OnchainOSReadonlyRunner
 from app.services.okx_skills import OKXSkillRegistry
 from app.tools.langchain_agent_tools import build_decision_agent_tools
 
@@ -52,11 +53,15 @@ class LangChainDecisionBackend:
         model: str | None = None,
         tools: list | None = None,
         skill_registry: OKXSkillRegistry | None = None,
+        readonly_runner: OnchainOSReadonlyRunner | None = None,
     ) -> None:
         self._agent = None
         self.model = model
-        self.tools = tools or []
+        self.tools = tools if tools is not None else build_decision_agent_tools()
         self.skill_registry = skill_registry or OKXSkillRegistry()
+        self.readonly_runner = readonly_runner or OnchainOSReadonlyRunner(
+            timeout_seconds=get_settings().models.timeout_seconds
+        )
 
     def decide(
         self,
@@ -158,18 +163,6 @@ class LangChainDecisionBackend:
         strategy_profile: dict[str, Any],
         signal_overlay: dict[str, Any] | None,
     ) -> DecisionAgentRuntimeContext:
-        def readonly_command_provider(command: str) -> dict[str, Any]:
-            normalized = command.strip().lower()
-            if "wallet status" in normalized or "wallet balance" in normalized or "wallet addresses" in normalized:
-                return {"ok": True, "payload": wallet_snapshot}
-            if "market price" in normalized or "market kline" in normalized or "token price-info" in normalized:
-                return {"ok": True, "payload": market_snapshot}
-            if "security token-scan" in normalized or "token advanced-info" in normalized:
-                return {"ok": True, "payload": risk_snapshot}
-            if "signal" in normalized or "tracker" in normalized:
-                return {"ok": True, "payload": signal_overlay or {}}
-            return {"ok": False, "error": "unsupported scaffold command", "command": command}
-
         def major_asset_execution_context_provider() -> dict[str, Any]:
             if resolved_asset.get("asset_lane") != "major":
                 return {}
@@ -208,15 +201,11 @@ class LangChainDecisionBackend:
             strategy_profile=strategy_profile,
             load_skill_provider=self.skill_registry.load_skill,
             load_reference_provider=self.skill_registry.load_reference,
-            readonly_command_provider=readonly_command_provider,
+            readonly_command_provider=self.readonly_runner.run,
             preloaded_wallet_snapshot=wallet_snapshot,
             preloaded_market_snapshot=market_snapshot,
             preloaded_risk_snapshot=risk_snapshot,
             preloaded_signal_overlay=signal_overlay,
-            wallet_context_provider=lambda chain: wallet_snapshot or {"target_chain": chain},
-            market_snapshot_provider=lambda: market_snapshot,
-            token_risk_provider=lambda: risk_snapshot,
-            signal_overlay_provider=lambda: signal_overlay or {},
             major_asset_execution_context_provider=major_asset_execution_context_provider,
             ta_score_provider=lambda: ta_snapshot,
             trade_sizing_inputs_provider=trade_sizing_inputs_provider,

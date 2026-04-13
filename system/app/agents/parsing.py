@@ -7,6 +7,7 @@ from typing import Protocol
 from pydantic import BaseModel
 
 from app.agents.runtime_context import ParsingAgentRuntimeContext
+from app.services.onchainos_runner import OnchainOSReadonlyRunner
 from app.services.okx_skills import OKXSkillRegistry
 from app.schemas.domain import ParsedSignal
 from app.config.settings import get_settings
@@ -43,11 +44,15 @@ class LangChainParsingBackend:
         model: str | None = None,
         tools: list | None = None,
         skill_registry: OKXSkillRegistry | None = None,
+        readonly_runner: OnchainOSReadonlyRunner | None = None,
     ) -> None:
         self._agent = None
         self.model = model
-        self.tools = tools or []
+        self.tools = tools if tools is not None else build_parsing_agent_tools()
         self.skill_registry = skill_registry or OKXSkillRegistry()
+        self.readonly_runner = readonly_runner or OnchainOSReadonlyRunner(
+            timeout_seconds=get_settings().models.timeout_seconds
+        )
 
     def parse(self, *, source_id: str, message_id: str, message_text: str) -> ParsedSignal:
         agent = self._get_agent()
@@ -70,6 +75,7 @@ class LangChainParsingBackend:
                 message_id=message_id,
                 load_skill_provider=self.skill_registry.load_skill,
                 load_reference_provider=self.skill_registry.load_reference,
+                readonly_command_provider=self.readonly_runner.run,
             ),
         )
         output = self._extract_output(result)

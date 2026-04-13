@@ -270,11 +270,10 @@ Still bounded by:
 Recommended priority:
 
 1. hard risk / invalid position state
-2. explicit KOL exit signal
-3. stop-loss hit
-4. take-profit hit
-5. trailing stop trigger
-6. max holding time trigger
+2. stop-loss hit
+3. take-profit hit
+4. trailing stop trigger
+5. max holding time trigger
 
 ## 13.2 Fallback Exit Rules
 
