@@ -45,8 +45,9 @@ Agent:
 
 Tools exposed:
 
-- `search_token_candidates`
-- `get_token_metadata` (optional)
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 
 Expected output:
 
@@ -93,8 +94,8 @@ Model call: no
 
 Tools:
 
-- `resolve_token_identity`
-- `get_token_market_snapshot`
+- deterministic app-side resolution using parse output
+- optional read-only `onchainos` lookup outside the model when needed for exact normalization
 
 Persist:
 
@@ -114,7 +115,8 @@ Model call: no
 
 Tools:
 
-- `get_wallet_context`
+- not a dedicated business wrapper
+- wallet data should come from OKX skill-guided `onchainos` commands or deterministic execution nodes
 
 Rules:
 
@@ -132,10 +134,9 @@ Model call: no
 
 Tools:
 
-- `get_token_market_snapshot`
-- `get_token_risk`
-- `get_signal_overlay`
-- `get_major_asset_execution_context`
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 - `compute_ta_score`
 - `build_trade_sizing_inputs`
 
@@ -162,11 +163,9 @@ Agent:
 
 Tools exposed:
 
-- `get_wallet_context`
-- `get_token_market_snapshot`
-- `get_token_risk`
-- `get_signal_overlay`
-- `get_major_asset_execution_context`
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 - `compute_ta_score`
 - `build_trade_sizing_inputs`
 

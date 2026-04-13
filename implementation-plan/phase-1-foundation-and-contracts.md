@@ -116,11 +116,12 @@ Implement:
   - signal intake flow
   - position monitoring flow
 
-## 6. Tool and Adapter Boundaries
+## 6. Tool and Skill Boundaries
 
 Implement empty or stubbed interfaces for:
 
-- OKX adapters
+- OKX skill registry / loader
+- generic read-only `onchainos` command boundary
 - scraper client
 - Telegram notifier
 - model-facing tools

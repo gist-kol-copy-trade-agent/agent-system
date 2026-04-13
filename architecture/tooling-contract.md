@@ -4,13 +4,16 @@
 
 This document defines the tool surface the LangChain agents should see.
 
-The agents should not call raw CLI commands directly.
-They should call application-owned Python tools that wrap:
+The integration pattern is `skill-first`, not `adapter-first`.
 
-- OKX OnchainOS skill invocations,
-- TA calculations,
-- persistence lookups,
-- internal policy helpers.
+That means:
+
+- the agent loads OKX OnchainOS skills as prompt specializations,
+- the agent uses a small generic `onchainos` command execution tool when it needs live OKX-covered data,
+- the application only implements custom tools for capabilities not covered by OnchainOS, such as TA and sizing math.
+
+The agents should not depend on a large set of business-specific OKX adapter wrappers like `get_wallet_context` or `get_token_risk` as their primary surface.
+Those wrappers may still exist internally for deterministic nodes, but they are not the preferred model-facing pattern.
 
 The tool layer must support two product lanes:
 
@@ -19,22 +22,26 @@ The tool layer must support two product lanes:
 
 ## 2. Tool Categories
 
-## 2.1 Read Tools
+## 2.1 Skill Tools
 
-Safe tools that fetch state or market data.
+Prompt-driven specialization tools.
 
 Examples:
 
-- `search_token_candidates`
-- `resolve_token_identity`
-- `get_wallet_context`
-- `get_token_market_snapshot`
-- `get_major_asset_execution_context`
-- `get_signal_overlay`
-- `get_position_snapshot`
-- `get_portfolio_analytics`
+- `load_okx_skill`
+- `load_okx_skill_reference`
 
-## 2.2 Scoring Tools
+## 2.2 Read / Execution-Boundary Tools
+
+Safe tools that execute read-only `onchainos` commands or fetch internal state.
+
+Examples:
+
+- `run_onchainos_readonly`
+- `get_position_snapshot`
+- `get_kol_followup_messages`
+
+## 2.3 Scoring Tools
 
 Pure functions or read-heavy helpers.
 
@@ -45,7 +52,7 @@ Examples:
 - `build_trade_sizing_inputs`
 - `summarize_risk_signals`
 
-## 2.3 Policy Tools
+## 2.4 Policy Tools
 
 Deterministic business-rule evaluation.
 
@@ -56,7 +63,7 @@ Examples:
 
 These usually should not be model-facing unless the model needs to inspect the result only.
 
-## 2.4 Execution Tools
+## 2.5 Execution Tools
 
 Sensitive side-effect tools.
 
@@ -73,118 +80,59 @@ These should not be generally exposed to decision agents.
 
 ## 3.1 Parsing Agent Tools
 
-### `search_token_candidates`
+### `load_okx_skill`
 Purpose:
 
-- search token candidates from symbol / name / address
+- load a full OKX skill prompt on demand
 
-Wraps:
+Examples:
 
-- `onchainos token search`
+- `okx-dex-token`
+- `okx-dex-market`
+- `okx-security`
+- `okx-agentic-wallet`
 
-Inputs:
-
-- `query`
-- `chain_hint`
-
-Outputs:
-
-- candidate list with chain, CA, symbol, name, price, change
-
-### `get_token_metadata`
+### `load_okx_skill_reference`
 Purpose:
 
-- fetch token info when parse agent needs confirmation
+- load a reference file mentioned by a selected skill
 
-Wraps:
+Examples:
 
-- `onchainos token info`
+- `references/cli-reference.md`
+- `references/risk-token-detection.md`
+- `_shared/chain-support.md`
+
+### `run_onchainos_readonly`
+Purpose:
+
+- execute a read-only `onchainos` command after the agent has loaded the relevant skill instructions
+
+Rules:
+
+- only allow read-only commands for model-facing use
+- write / side-effect commands stay outside unrestricted agent control
+- the tool should return parsed JSON or structured text payloads
 
 ## 3.2 Decision Agent Tools
 
-### `get_wallet_context`
-Wraps:
+### `run_onchainos_readonly`
+This is the main OKX-facing tool for the decision agent.
+
+Typical commands:
 
 - `onchainos wallet status`
 - `onchainos wallet balance --chain <chain>`
 - `onchainos wallet addresses --chain <chain>`
-
-Returns:
-
-- login state
-- policy limits
-- available balances
-- usable wallet address
-
-This tool should accept the target execution chain rather than assuming the resolved signal chain.
-
-### `get_token_market_snapshot`
-Wraps:
-
-- `onchainos token price-info`
-- `onchainos market price`
-- `onchainos market kline`
-
-Returns:
-
-- spot price
-- recent candles
-- market cap
-- liquidity
-- volume
-
-For the major-asset lane, this tool may omit regular-token metadata that is not needed by the strategy.
-
-### `get_token_risk`
-Wraps:
-
-- `onchainos security token-scan`
-- `onchainos token advanced-info`
-
-Returns:
-
-- risk verdict
-- taxes
-- support flags
-- risk control level
-- token tags
-- dev rug history
-- holder concentration summary
-- LP burn signal when available
-
-This tool is required for the regular-token lane and optional / normally skipped for the major-asset lane.
-
-### `get_major_asset_execution_context`
-Purpose:
-
-- provide the decision-ready context for `BTC/ETH/SOL` execution on `X Layer`
-
-Wraps:
-
-- `onchainos wallet balance --chain xlayer`
-- `onchainos wallet addresses --chain xlayer`
-- `onchainos market price`
-- `onchainos market kline`
-- `onchainos swap quote`
-
-Returns:
-
-- approved X Layer asset mapping
-- X Layer executable balance
-- current price
-- recent candles
-- quote readiness
-- price impact snapshot
-
-### `get_signal_overlay`
-Wraps:
-
+- `onchainos market price --address <address>`
+- `onchainos market kline --address <address>`
+- `onchainos token price-info --address <address>`
+- `onchainos security token-scan ...`
+- `onchainos token advanced-info --address <address>`
+- `onchainos swap quote ...`
 - `onchainos signal list`
-- optional `onchainos tracker activities`
 
-Returns:
-
-- smart-money/KOL/whale overlay summary
+The relevant skill prompt must be loaded first so the model knows the exact command semantics and safety rules.
 
 ### `compute_ta_score`
 Pure application tool.

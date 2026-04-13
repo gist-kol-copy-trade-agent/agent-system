@@ -25,7 +25,8 @@ For this product, the recommended architecture is:
 
 - LangChain agent(s) for bounded reasoning tasks.
 - LangGraph state graph for orchestration and failure recovery.
-- Application services for OKX skill execution, TA calculation, Telegram IO, and persistence.
+- OKX OnchainOS skills loaded by the agent as prompt specializations.
+- Application services mainly for skill loading, deterministic execution control, TA calculation, Telegram IO, and persistence.
 
 The product also has two execution lanes:
 
@@ -175,11 +176,11 @@ It also should not decide whether a token is in the major-asset allowlist. That 
 
 ## 8.1 Tools Exposed to Parsing Agent
 
-Expose only lightweight read tools:
+Expose a small skill-first tool surface:
 
-- `search_token_candidates`
-- `get_token_metadata`
-- `get_chain_support`
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 
 Do not expose:
 
@@ -189,13 +190,11 @@ Do not expose:
 
 ## 8.2 Tools Exposed to Decision Agent
 
-Expose only read and scoring tools:
+Expose:
 
-- `get_wallet_context`
-- `get_token_market_snapshot`
-- `get_token_risk`
-- `get_signal_overlay`
-- `get_major_asset_execution_context`
+- `load_okx_skill`
+- `load_okx_skill_reference`
+- `run_onchainos_readonly`
 - `compute_ta_score`
 - `build_trade_sizing_inputs`
 
@@ -207,10 +206,10 @@ Do not expose:
 
 The decision agent outputs a typed decision object, not side effects.
 
-The graph should filter this tool set by lane:
+The graph or middleware should filter skill availability by lane:
 
-- major asset lane: no token-risk or regular-token research tools unless explicitly needed
-- regular token lane: full decision tool set
+- major asset lane: prefer `okx-agentic-wallet`, `okx-dex-market`, `okx-dex-swap`
+- regular token lane: add `okx-dex-token` and `okx-security`
 
 ## 8.3 Tools Exposed to Exit Agent
 
@@ -250,6 +249,12 @@ Each agent should have:
 - a typed output schema,
 - middleware for prompt shaping and tool filtering,
 - checkpointer-backed execution via LangGraph.
+
+For OKX integrations, the default should be:
+
+- progressive disclosure through skill-loading tools,
+- generic `onchainos` command tools for live OKX-covered capabilities,
+- app-owned tools only for non-OKX capabilities.
 
 ## 9.2 Runtime Context
 
