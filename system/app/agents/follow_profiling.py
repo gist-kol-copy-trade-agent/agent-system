@@ -24,6 +24,12 @@ class FollowProfileOutput(BaseModel):
     )
     profiling_summary: str = Field(description="Short user-facing summary of the channel's retrospective performance.")
     notable_patterns: list[str] = Field(default_factory=list, description="Notable patterns found during profiling.")
+    biggest_win_symbol: str | None = Field(default=None, description="Best-performing symbol observed in the retrospective sample.")
+    biggest_win_return_pct: float | None = Field(default=None, description="Best 1-day return percentage observed in the retrospective sample.")
+    major_asset_bias: str = Field(default="", description="Short assessment of how the channel performs on major assets.")
+    regular_token_bias: str = Field(default="", description="Short assessment of how the channel performs on regular tokens.")
+    pattern_breakdown: list[str] = Field(default_factory=list, description="More granular pattern findings than the short notable pattern list.")
+    user_message_long: str = Field(default="", description="Long-form user-facing explanation of the retrospective profiling result.")
 
 
 class FollowProfilingBackend(Protocol):
@@ -78,6 +84,8 @@ class LangChainFollowProfilingBackend:
                             "Extract actionable historical trade calls from the messages.\n"
                             "Then load okx-dex-market and use run_onchainos_readonly with onchainos market kline to evaluate "
                             "how those calls performed within 1 day after the call.\n"
+                            "Return rich follow-profiling output including biggest winner, major-vs-regular bias, pattern breakdown, "
+                            "and a user_message_long that explains the recommended conviction.\n"
                             "Return only a structured summary with retrospective metrics and a suggested conviction level.\n"
                             + json.dumps({"channel_name": channel_name, "messages": messages}, ensure_ascii=True)
                         ),
@@ -110,6 +118,8 @@ class LangChainFollowProfilingBackend:
             "Use OKX skills with progressive disclosure. "
             "Load okx-dex-market when you need market kline data and use run_onchainos_readonly for read-only commands only. "
             "Your job is to retrospectively profile a channel, not to register it. "
+            "In addition to aggregate metrics, explain which asset group the channel appears stronger on, highlight the biggest observed winner, "
+            "and provide a user-facing rationale for the suggested conviction. "
             "Output only the structured profiling schema."
         )
         self._agent = create_agent(

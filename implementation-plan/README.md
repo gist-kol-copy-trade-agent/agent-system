@@ -31,12 +31,19 @@ Structure:
 - [phase-4-position-monitoring-and-hardening.md](phase-4-position-monitoring-and-hardening.md)
 - Goal: implement cron-driven position exit monitoring, reliability controls, and production-grade observability/hardening for the PoC
 
+### Phase 5
+
+- [phase-5-explainability-and-demo-readiness.md](phase-5-explainability-and-demo-readiness.md)
+- Goal: close the gap between current runtime outputs and demo-quality reasoning, analysis, and execution receipts
+- Status: implemented for MVP v1
+
 ## Recommended Execution Order
 
 1. complete Phase 1 before parallelizing anything else
 2. complete core pieces of Phase 2 before Phase 3
 3. Phase 3 is the first end-to-end trading milestone
 4. Phase 4 closes the PoC loop and prepares the system for stable demo operation
+5. Phase 5 upgrades explainability and narrative quality so the demo can be produced from real runtime outputs with minimal manual scripting
 
 ## Reference Set
 

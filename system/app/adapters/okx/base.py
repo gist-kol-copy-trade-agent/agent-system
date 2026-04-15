@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,11 +22,12 @@ class OKXAdapterError(Exception):
     pass
 
 
-class OKXCommandRunner:
+class OKXCommandRunner(ABC):
     """Boundary for executing built OKX commands."""
 
+    @abstractmethod
     def run(self, command: OKXCommand) -> OKXCommandResult:
-        raise NotImplementedError("OKX command execution is implemented in a later phase.")
+        """Execute a fully constructed OKX command."""
 
 
 class OKXAdapter:

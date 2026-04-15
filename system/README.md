@@ -1,20 +1,26 @@
 # System
 
-Phase 1 scaffold for the implementation described in `../implementation-plan/phase-1-foundation-and-contracts.md`.
+MVP runtime for the implementation described across `../architecture/` and `../implementation-plan/`.
 
 This directory contains:
 
 - Python application package in `app/`
 - migration skeleton in `migrations/`
-- smoke tests in `tests/`
+- test suite in `tests/`
 
-The code here is intentionally skeletal. It locks interfaces and contracts before feature work in later phases.
+The code here is runnable for demo and supervised MVP validation, but it still has explicit boundaries:
+
+- LangGraph orchestration is implemented for signal intake, exit evaluation, and command flows.
+- execution and policy gates are deterministic after the agent decision boundary.
+- default checkpoint durability uses the Postgres LangGraph checkpointer when installed with runtime dependencies.
 
 Current runtime shape:
 
 - HTTP app only for scraper webhook + health/readiness
 - Telegram bot runtime as a separate polling process
 - core trading and exit workflows run through LangGraph-backed services in `app/services/`
+- `/readiness` exposes both component checks and `trading_runtime_ready` for execution-critical preflight status
+- `python -m app.workers.preflight` provides an operator/CI-friendly preflight that exits non-zero when trading readiness is not met
 
 Persistence:
 
@@ -30,12 +36,12 @@ export OKX_AGENT_PERSISTENCE__DATABASE_URL=postgresql+psycopg://postgres:postgre
 Quick start with local Postgres:
 
 ```bash
-docker compose up -d postgres
+docker compose -f docker-compose.standalone.yml up -d postgres
 ```
 
 Operational docs:
 
-- Runbook: `RUNBOOK.md`
-- Env template: `.env.example`
+- Env template: `.env.standalone.example`
 - Container build: `Dockerfile`
-- Runtime stack: `docker-compose.yml`
+- Standalone runtime stack: `docker-compose.standalone.yml`
+- Reproducible local dev/test flow: use the root `Makefile` with a dedicated `system` virtualenv

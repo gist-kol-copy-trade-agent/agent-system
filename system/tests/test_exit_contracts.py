@@ -54,6 +54,10 @@ def test_exit_graph_state_contract_accepts_expected_fields() -> None:
         "confidence": 0.82,
         "rationale_summary": "Position is in profit and can arm trailing logic.",
         "telegram_summary": "Trailing has been armed for ETH.",
+        "trigger_reasoning": "Profit threshold reached.",
+        "trailing_plan": "Arm trailing to protect gains.",
+        "risk_protection_summary": "Trailing drawdown will control giveback.",
+        "user_message_long": "Trailing is being armed because profit threshold has been met.",
     }
     execution_request: ExitExecutionRequest = {
         "asset_lane": "major",
@@ -75,13 +79,21 @@ def test_exit_graph_state_contract_accepts_expected_fields() -> None:
         "position_snapshot": position_snapshot,
         "trailing_state": trailing_state,
         "exit_market_snapshot": None,
+        "position_tracking_snapshot": None,
+        "position_tracking_explanation": None,
         "exit_ta_snapshot": None,
+        "exit_ta_explanation": None,
         "strategy_profile": None,
         "exit_decision": exit_decision,
+        "exit_decision_explanation": None,
         "policy_gate_result": {"passed": True, "action": "execute", "failure_codes": [], "summary": "ok"},
+        "exit_policy_explanation": None,
         "execution_request": execution_request,
         "execution_result": None,
+        "exit_execution_receipt_explanation": None,
         "telegram_summary": "Trailing has been armed for ETH.",
+        "execution_trace": [],
+        "position_record": None,
     }
 
     assert state["exit_decision"]["decision"] == "exit_trailing_arm"

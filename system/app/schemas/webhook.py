@@ -1,6 +1,18 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class ScraperMediaBlob(BaseModel):
+    kind: Literal["image"]
+    mime_type: str
+    telegram_file_id: str | None = None
+    telegram_unique_file_id: str | None = None
+    base64_data: str
+    file_size_bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
+    caption: str | None = None
 
 
 class ScraperWebhookPayload(BaseModel):
@@ -14,6 +26,7 @@ class ScraperWebhookPayload(BaseModel):
     message_text: str
     message_timestamp: str
     message_url: str | None = None
+    media_blobs: list[ScraperMediaBlob] = Field(default_factory=list)
     raw_payload: dict
 
 
@@ -22,6 +35,7 @@ class ScraperHistoricalMessageSample(BaseModel):
     message_text: str
     message_timestamp: str
     message_url: str | None = None
+    media_blobs: list[ScraperMediaBlob] = Field(default_factory=list)
 
 
 class ScraperFollowProfileWebhookPayload(BaseModel):

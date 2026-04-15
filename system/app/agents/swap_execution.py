@@ -37,6 +37,12 @@ class SwapExecutionResultOutput(BaseModel):
     received_token_symbol: str | None = Field(default=None, description="Received token symbol for buy execution if available.")
     realized_output_amount: str | None = Field(default=None, description="Realized output amount for sell execution if available.")
     realized_output_symbol: str | None = Field(default=None, description="Realized output symbol for sell execution if available.")
+    explorer_url: str | None = Field(default=None, description="Primary explorer URL for the swap transaction if available.")
+    approval_explorer_url: str | None = Field(default=None, description="Explorer URL for the approval transaction if available.")
+    execution_price: float | None = Field(default=None, description="Estimated or realized execution price if available.")
+    effective_price_impact_pct: float | None = Field(default=None, description="Effective price impact after route selection or fill if available.")
+    route_summary: str | None = Field(default=None, description="Short route summary if the swap path is known.")
+    receipt_message_long: str | None = Field(default=None, description="Long-form execution receipt for the user if available.")
     error_code: str | None = Field(default=None, description="Normalized execution error code if the swap failed.")
     error_message: str | None = Field(default=None, description="Normalized execution error message if the swap failed.")
 
@@ -98,6 +104,7 @@ class LangChainSwapExecutionBackend:
             "Load okx-dex-swap skill, synthesize the exact execution request, and invoke the bounded swap tool. "
             "Always use resolved_wallet_address from runtime context when present. "
             "If wallet address is missing or stale, load okx-agentic-wallet and resolve active wallet via wallet status + wallet addresses first. "
+            "Populate receipt fields when available, including explorer URLs, execution price, price impact, route summary, and receipt_message_long. "
             "Do not change the trade intent or bypass the validated inputs. Output only the structured schema."
         )
         self._agent = create_agent(
@@ -114,6 +121,7 @@ class LangChainSwapExecutionBackend:
             "Execute this already validated swap intent.\n"
             "Load okx-dex-swap and use the bounded mutating swap tool.\n"
             "Use resolved_wallet_address from context when available, otherwise resolve via wallet status + wallet addresses.\n"
+            "Return a rich execution receipt if the swap tool exposes hashes, pricing, route, or explorer information.\n"
             + json.dumps(intent, ensure_ascii=True)
         )
 

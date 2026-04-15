@@ -39,6 +39,12 @@ class FakeSwapExecutionBackend:
                 "swap_tx_hash": "0xbuy",
                 "received_token_amount": "25.0",
                 "received_token_symbol": intent["to_token"],
+                "explorer_url": "https://explorer.example/tx/0xbuy",
+                "approval_explorer_url": None,
+                "execution_price": 3200.0,
+                "effective_price_impact_pct": 0.4,
+                "route_summary": "USDC -> ETH on xlayer",
+                "receipt_message_long": "Swap filled successfully on X Layer.",
                 "error_code": None,
                 "error_message": None,
             },
@@ -99,14 +105,14 @@ class MissingKlineEnrichmentBackend:
         }
 
 
-def build_service() -> SignalIntakeGraphService:
+def build_service(*, parsing_backend=None) -> SignalIntakeGraphService:
     strategy_service = StrategyProfileService(InMemoryStrategyProfileRepository())
     execution_repo = InMemoryTradeExecutionRepository()
     position_repo = InMemoryPositionRepository()
     position_event_repo = InMemoryPositionEventRepository()
     notification_repo = InMemoryTelegramNotificationRepository()
     service = SignalIntakeGraphService(
-        parsing_agent=ParsingAgent(backend=FakeParsingBackend()),
+        parsing_agent=ParsingAgent(backend=parsing_backend or FakeParsingBackend()),
         strategy_profiles=strategy_service,
         enrichment_agent=EnrichmentAgent(backend=FakeEnrichmentBackend()),
         decision_agent=DecisionAgent(backend=FakeDecisionBackend()),
@@ -137,13 +143,17 @@ def test_signal_intake_major_lane_flow() -> None:
         )
     )
     assert result["parsed_signal"]["message_type"] == "trade_call"
+    assert result["parse_explanation"]["title"] == "Signal parsed"
+    assert result["parse_explanation"]["key_metrics"]["message_type"] == "trade_call"
     assert result["resolved_asset"]["asset_lane"] == "major"
     assert result["resolved_asset"]["target_execution_chain"] == "xlayer"
+    assert result["resolved_asset"]["approved_major_mapping"] == "xlayer:WETH"
     assert result["risk_snapshot"]["risk_scan_required"] is False
     assert result["policy_gate_result"]["action"] == "execute"
     assert result["policy_gate_result"]["passed"] is True
     assert result["execution_request"]["side"] == "buy"
     assert result["execution_result"]["success"] is True
+    assert result["execution_receipt_explanation"]["summary"] == "Buy execution succeeded."
     assert [item["stage"] for item in result["execution_trace"]] == [
         "parse",
         "enrichment",
@@ -180,6 +190,45 @@ def test_signal_intake_regular_lane_flow() -> None:
     assert len(result["execution_trace"]) == 4
 
 
+def test_signal_intake_blocks_ambiguous_regular_token_without_contract() -> None:
+    class AmbiguousRegularParsingBackend:
+        def parse(self, *, source_id: str, message_id: str, message_text: str, media_blobs=None):
+            return {
+                "source_id": source_id,
+                "message_id": message_id,
+                "message_type": "trade_call",
+                "is_actionable": True,
+                "raw_symbol": "PEPE",
+                "raw_contract_address": None,
+                "raw_chain_hint": "ethereum",
+                "entry_reference_text": "entry now",
+                "target_reference_text": None,
+                "stop_reference_text": None,
+                "urgency": "high",
+                "resolved_symbol": "PEPE",
+                "resolved_contract_address": None,
+                "resolved_chain": "ethereum",
+                "resolved_token_name": None,
+                "resolved_decimals": None,
+                "confidence": 0.7,
+                "reasoning_summary": "classified as trade_call but without exact token identity",
+            }
+
+    service = build_service(parsing_backend=AmbiguousRegularParsingBackend())
+    result = service.run(
+        SignalIntakeRequest(
+            user_id="u1",
+            source_id="src1",
+            message_id="sig-ambiguous-1",
+            message_text="Buy PEPE now on ethereum",
+        )
+    )
+    assert result["trade_decision"]["decision"] == "block"
+    assert result["trade_decision"]["decision_reason_code"] == "TOKEN_AMBIGUOUS"
+    assert result["execution_result"] is None
+    assert result["resolved_asset"]["asset_lane"] == "regular"
+
+
 def test_signal_intake_non_actionable_signal_skips() -> None:
     service = build_service()
     result = service.run(
@@ -193,6 +242,9 @@ def test_signal_intake_non_actionable_signal_skips() -> None:
     assert result["trade_decision"]["decision"] == "skip"
     assert result["trade_decision"]["decision_reason_code"] == "NON_ACTIONABLE_SIGNAL"
     assert [item["stage"] for item in result["execution_trace"]] == ["parse"]
+    assert len(service._test_notification_repo._records) == 2  # type: ignore[attr-defined]
+    assert service._test_notification_repo._records[-1].notification_type == "trade_execution"  # type: ignore[attr-defined]
+    assert "Signal ignored because it is not a tradeable call." in service._test_notification_repo._records[-1].message_text  # type: ignore[attr-defined]
 
 
 def test_signal_intake_blocks_when_enrichment_does_not_return_kline_window() -> None:

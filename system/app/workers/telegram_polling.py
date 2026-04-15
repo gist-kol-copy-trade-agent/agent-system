@@ -13,15 +13,10 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _get_env(name: str, default: str) -> str:
-    value = os.getenv(name, default).strip()
-    return value or default
-
-
 def main() -> None:
     bot_token = _require_env("TELEGRAM_BOT_TOKEN")
-    callback_url = _get_env("APP_CALLBACK_URL_MESSAGES", "http://localhost:8000/webhooks/scraper/messages")
-    webhook_secret = _get_env("APP_WEBHOOK_SECRET", "dev-secret")
+    callback_url = _require_env("APP_CALLBACK_URL_MESSAGES")
+    webhook_secret = _require_env("APP_WEBHOOK_SECRET")
 
     runtime = build_application_runtime(
         callback_url=callback_url,

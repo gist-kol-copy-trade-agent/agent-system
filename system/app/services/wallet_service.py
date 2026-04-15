@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from app.agents.wallet_agent import WalletAgent
 from app.persistence.repositories import WalletSessionRecord, WalletSessionRepository, utc_now_iso
 from app.schemas.commands import CommandResponse
-
-
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-OTP_RE = re.compile(r"^\d{4,8}$")
 
 
 @dataclass
@@ -84,77 +79,3 @@ class WalletService:
         if any("\u3040" <= ch <= "\u30ff" for ch in raw_text):
             return "ja-JP"
         return "en-US"
-
-
-class DefaultWalletBackend:
-    def handle(self, *, user_id: str, raw_text: str, phase: str, locale: str):
-        text = raw_text.strip()
-        if phase == "start":
-            return type(
-                "Obj",
-                (),
-                {
-                    "message": "You need to log in with your email first before adding a wallet. What is your email address?",
-                    "payload": {"logged_in": False},
-                    "model_dump": lambda self=None: {
-                        "phase": "awaiting_email",
-                        "message": "You need to log in with your email first before adding a wallet. What is your email address?",
-                        "payload": {"logged_in": False},
-                    },
-                },
-            )()
-        if phase == "awaiting_email":
-            if not EMAIL_RE.match(text):
-                return type(
-                    "Obj",
-                    (),
-                    {
-                        "message": "Please enter a valid email address.",
-                        "payload": {"logged_in": False},
-                        "model_dump": lambda self=None: {
-                            "phase": "awaiting_email",
-                            "message": "Please enter a valid email address.",
-                            "payload": {"logged_in": False},
-                        },
-                    },
-                )()
-            return type(
-                "Obj",
-                (),
-                {
-                    "message": f"A verification code has been sent to {text}. Please check your inbox and tell me the code.",
-                    "payload": {"logged_in": False, "email": text},
-                    "model_dump": lambda self=None: {
-                        "phase": "awaiting_otp",
-                        "message": f"A verification code has been sent to {text}. Please check your inbox and tell me the code.",
-                        "payload": {"logged_in": False, "email": text},
-                    },
-                },
-            )()
-        if not OTP_RE.match(text):
-            return type(
-                "Obj",
-                (),
-                {
-                    "message": "Please enter the verification code from your email.",
-                    "payload": {"logged_in": False},
-                    "model_dump": lambda self=None: {
-                        "phase": "awaiting_otp",
-                        "message": "Please enter the verification code from your email.",
-                        "payload": {"logged_in": False},
-                    },
-                },
-            )()
-        return type(
-            "Obj",
-            (),
-            {
-                "message": "Wallet created successfully!\nEVM Address: 0xabc\nSolana Address: So1abc",
-                "payload": {"logged_in": True, "wallet_evm_address": "0xabc", "wallet_sol_address": "So1abc"},
-                "model_dump": lambda self=None: {
-                    "phase": "ready",
-                    "message": "Wallet created successfully!\nEVM Address: 0xabc\nSolana Address: So1abc",
-                    "payload": {"logged_in": True, "wallet_evm_address": "0xabc", "wallet_sol_address": "So1abc"},
-                },
-            },
-        )()

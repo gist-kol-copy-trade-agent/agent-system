@@ -52,7 +52,7 @@ environment:
 
 ```yaml
 models:
-  parsing_model: openai:gpt-5.3-mini
+  parsing_model: openai:gpt-5.3
   enrichment_model: openai:gpt-5.4
   decision_model: openai:gpt-5.4
   exit_model: openai:gpt-5.4
@@ -93,14 +93,28 @@ langgraph:
   resume_on_restart: true
 ```
 
+Notes:
+
+- `postgres` is the default runtime backend for durable thread checkpoints.
+- tests and local lightweight validation can override to `memory`.
+- runtime fails fast if `postgres` is configured but the backend package is unavailable.
+
 ## 7. Telegram
 
 ```yaml
 telegram:
   command_timeout_seconds: 15
   max_message_length: 4000
-  default_notification_mode: concise
+
+notifications:
+  mode: standard
 ```
+
+Accepted values for `notifications.mode`:
+
+- `compact`
+- `standard`
+- `demo_longform`
 
 ## 8. Scraper Integration
 

@@ -10,7 +10,7 @@ from app.persistence.repositories import (
     InMemoryTradeExecutionRepository,
     PositionRecord,
 )
-from app.services.exit_flow import ExitFlowRequest, ExitGraphService, OnchainOSSwapExitExecutionRunner
+from app.services.exit_flow import ExitFlowRequest, ExitGraphService, ExitSizingError, OnchainOSSwapExitExecutionRunner
 from app.services.notifications import NotificationService, RecordingTelegramClient
 from app.services.strategy_profiles import StrategyProfileService
 
@@ -32,6 +32,10 @@ class HoldExitBackend:
             "confidence": 0.7,
             "rationale_summary": "No exit trigger.",
             "telegram_summary": "Hold position.",
+            "trigger_reasoning": "No deterministic exit trigger is currently active.",
+            "trailing_plan": "Keep monitoring without arming trailing yet.",
+            "risk_protection_summary": "Existing hard-risk protections remain in place.",
+            "user_message_long": "I am holding because no hard exit or trailing trigger has fired yet.",
         }
 
 
@@ -52,6 +56,10 @@ class TrailingArmExitBackend:
             "confidence": 0.82,
             "rationale_summary": "Arm trailing.",
             "telegram_summary": "Trailing armed.",
+            "trigger_reasoning": "The profit threshold for arming trailing has been reached.",
+            "trailing_plan": "Arm trailing now and protect gains on subsequent drawdown.",
+            "risk_protection_summary": "Once armed, trailing drawdown rules will cap giveback from the peak.",
+            "user_message_long": "I am arming trailing because the position has moved enough into profit to start protecting gains.",
         }
 
 
@@ -72,6 +80,10 @@ class FireExitBackend:
             "confidence": 0.88,
             "rationale_summary": "Fire trailing exit.",
             "telegram_summary": "Trailing exit fired.",
+            "trigger_reasoning": "The position has drawn down enough from the peak to fire the trailing exit.",
+            "trailing_plan": "Trailing was already armed and now converts into a sell action.",
+            "risk_protection_summary": "The exit protects accumulated profit before deeper reversal develops.",
+            "user_message_long": "I am exiting now because the trailing threshold was breached after the position had already armed protection.",
         }
 
 
@@ -92,6 +104,10 @@ class HardExitBackend:
             "confidence": 0.91,
             "rationale_summary": "Max holding time exceeded.",
             "telegram_summary": "Hard exit fired.",
+            "trigger_reasoning": "The position exceeded the configured maximum holding time.",
+            "trailing_plan": "Do not keep trailing active once the hard exit rule is triggered.",
+            "risk_protection_summary": "Hard risk rules override continued holding to limit stale exposure.",
+            "user_message_long": "I am taking a hard exit because the position has exceeded the allowed holding time.",
         }
 
 
@@ -117,6 +133,12 @@ class FakeSwapExecutionBackend:
                 "swap_tx_hash": "0xexit",
                 "realized_output_amount": "100.0",
                 "realized_output_symbol": intent["to_token"],
+                "explorer_url": "https://explorer.example/tx/0xexit",
+                "approval_explorer_url": None,
+                "execution_price": 110.0,
+                "effective_price_impact_pct": 0.5,
+                "route_summary": "ETH -> USDC on xlayer",
+                "receipt_message_long": "Exit swap filled successfully on X Layer.",
                 "error_code": None,
                 "error_message": None,
             },
@@ -222,6 +244,7 @@ def test_exit_flow_hold_path() -> None:
         )
     )
     assert state["exit_decision"]["decision"] == "hold"
+    assert state["exit_decision_explanation"]["summary"] == "No exit trigger."
     assert state["policy_gate_result"]["action"] == "hold"
     assert state["execution_result"] is None
     assert [item["stage"] for item in state["execution_trace"]] == [
@@ -229,11 +252,13 @@ def test_exit_flow_hold_path() -> None:
         "exit_decision",
         "exit_policy_gate",
     ]
-    assert len(notification_repo._records) == 3
+    assert len(notification_repo._records) == 4
     assert notification_repo._records[0].notification_type == "progress:exit_ta"
     assert "📉 Exit Monitoring" in notification_repo._records[0].message_text
     assert "Symbol: ETH" in notification_repo._records[0].message_text
     assert "Action: hold" in notification_repo._records[1].message_text
+    assert notification_repo._records[-1].notification_type == "exit_evaluation"
+    assert "Final action: hold." in notification_repo._records[-1].message_text
 
 
 def test_exit_flow_trailing_arm_path_updates_state() -> None:
@@ -268,6 +293,7 @@ def test_exit_flow_trailing_fire_executes_sell() -> None:
     assert state["policy_gate_result"]["action"] == "execute"
     assert state["execution_request"]["side"] == "sell"
     assert state["execution_result"]["success"] is True
+    assert state["exit_execution_receipt_explanation"]["summary"] == "Sell execution succeeded."
     assert len(state["execution_trace"]) == 3
     assert len(execution_repo._records) == 1
     assert len(position_event_repo._records) == 1
@@ -292,6 +318,28 @@ def test_exit_flow_hard_exit_closes_position() -> None:
     assert len(execution_repo._records) == 1
     assert position_event_repo._records[0].event_type == "exit_execution_succeeded"
     assert notification_repo._records[-1].send_status == "sent"
+
+
+def test_exit_flow_blocks_sell_when_entry_token_amount_missing() -> None:
+    service, position_repo, _, _, _, _ = build_service(HardExitBackend())
+    record = position_repo.get_by_position_id("pos-1")
+    assert record is not None
+    record.entry_token_amount = None
+    position_repo.save(record)
+
+    try:
+        service.run(
+            ExitFlowRequest(
+                user_id="u1",
+                position_id="pos-1",
+                cycle_id="cycle-missing-size",
+                position_record=position_repo.get_by_position_id("pos-1"),  # type: ignore[arg-type]
+            )
+        )
+    except ExitSizingError:
+        assert True
+        return
+    assert False, "expected ExitSizingError when token amount is missing"
 
 
 def test_exit_flow_uses_refreshed_market_price_for_pnl() -> None:

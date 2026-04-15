@@ -34,7 +34,14 @@ class ParsedSignalOutput(BaseModel):
 
 
 class ParsingBackend(Protocol):
-    def parse(self, *, source_id: str, message_id: str, message_text: str) -> ParsedSignal: ...
+    def parse(
+        self,
+        *,
+        source_id: str,
+        message_id: str,
+        message_text: str,
+        media_blobs: list[dict] | None = None,
+    ) -> ParsedSignal: ...
 
 
 @dataclass
@@ -59,25 +66,28 @@ class LangChainParsingBackend:
             timeout_seconds=get_settings().models.timeout_seconds
         )
 
-    def parse(self, *, source_id: str, message_id: str, message_text: str) -> ParsedSignal:
+    def parse(
+        self,
+        *,
+        source_id: str,
+        message_id: str,
+        message_text: str,
+        media_blobs: list[dict] | None = None,
+    ) -> ParsedSignal:
         agent = self._get_agent()
         result = agent.invoke(
             {
                 "messages": [
                     {
                         "role": "user",
-                        "content": (
-                            "Parse this Telegram trading message into structured fields.\n"
-                            "If token identity is ambiguous or incomplete, first load the relevant OKX skill prompt, "
-                            "then use run_onchainos_readonly with the commands described by that skill to resolve token clues.\n"
-                            f"Message:\n{message_text}"
-                        ),
+                        "content": self._build_user_content(message_text=message_text, media_blobs=media_blobs or []),
                     }
                 ]
             },
             context=ParsingAgentRuntimeContext(
                 source_id=source_id,
                 message_id=message_id,
+                media_blobs=media_blobs,
                 load_skill_provider=self.skill_registry.load_skill,
                 load_reference_provider=self.skill_registry.load_reference,
                 readonly_command_provider=self.readonly_runner.run,
@@ -120,6 +130,8 @@ class LangChainParsingBackend:
             "You are a parsing agent for Telegram KOL trading messages. "
             "Classify each message into one of: trade_call, trade_update, exit_signal, noise. "
             "Extract raw symbol, raw contract address, raw chain hint, entry, target, stop, urgency, confidence, and reasoning summary. "
+            "If image attachments are present, inspect them because KOLs often include TA screenshots or annotated charts that refine the trade context. "
+            "Use images only as supporting evidence and do not invent textual details that are not visible. "
             "When needed, also resolve the best supported token clue set: resolved symbol, resolved contract address, resolved chain, token name, and decimals. "
             "For OKX OnchainOS capabilities, use the skills pattern with progressive disclosure: "
             "load the relevant skill prompt first, then follow its command guidance via run_onchainos_readonly when needed. "
@@ -151,6 +163,33 @@ class LangChainParsingBackend:
             return ParsedSignalOutput(**json.loads(result))
         raise RuntimeError("Could not extract structured parsing output from LangChain agent result.")
 
+    @staticmethod
+    def _build_user_content(*, message_text: str, media_blobs: list[dict]) -> str | list[dict[str, str]]:
+        instruction = (
+            "Parse this Telegram trading message into structured fields.\n"
+            "If token identity is ambiguous or incomplete, first load the relevant OKX skill prompt, "
+            "then use run_onchainos_readonly with the commands described by that skill to resolve token clues.\n"
+            "If image attachments are present, inspect them for supporting TA context, labels, or trade annotations.\n"
+            f"Message:\n{message_text}"
+        )
+        image_parts: list[dict[str, str]] = []
+        for blob in media_blobs:
+            if blob.get("kind") != "image":
+                continue
+            base64_data = blob.get("base64_data")
+            mime_type = blob.get("mime_type") or "image/*"
+            if not base64_data:
+                continue
+            image_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{base64_data}"},
+                }
+            )
+        if not image_parts:
+            return instruction
+        return [{"type": "text", "text": instruction}, *image_parts]
+
 
 class ParsingAgent:
     """Parsing agent with pluggable backends.
@@ -166,5 +205,17 @@ class ParsingAgent:
         else:
             self.backend = LangChainParsingBackend(tools=self.config.tools)
 
-    def parse(self, *, source_id: str, message_id: str, message_text: str) -> ParsedSignal:
-        return self.backend.parse(source_id=source_id, message_id=message_id, message_text=message_text)
+    def parse(
+        self,
+        *,
+        source_id: str,
+        message_id: str,
+        message_text: str,
+        media_blobs: list[dict] | None = None,
+    ) -> ParsedSignal:
+        return self.backend.parse(
+            source_id=source_id,
+            message_id=message_id,
+            message_text=message_text,
+            media_blobs=media_blobs,
+        )

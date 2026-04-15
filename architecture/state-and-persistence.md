@@ -12,10 +12,14 @@ Use it for:
 
 - current messages in the thread,
 - current parse result,
+- current parse explanation,
 - current token resolution result,
 - current enrichment snapshot,
+- current enrichment explanation,
 - current decision object,
+- current decision explanation,
 - current execution attempt state,
+- current execution receipt explanation,
 - current Telegram response draft,
 - transient errors and retry metadata.
 
@@ -83,16 +87,22 @@ signal_id
 position_id
 raw_message_text
 parsed_signal
+parse_explanation
 resolved_asset
 wallet_snapshot
 market_snapshot
 signal_overlay
 ta_snapshot
+enrichment_explanation
+ta_explanation
 risk_snapshot
 decision_draft
+decision_explanation
 policy_gate_result
+policy_explanation
 execution_request
 execution_result
+execution_receipt_explanation
 telegram_summary
 ```
 
@@ -219,6 +229,13 @@ For local development:
 For production-like environments:
 
 - persistent LangGraph checkpointer backed by Postgres
+
+Current MVP implementation:
+
+- graph orchestration is wired through LangGraph,
+- default runtime uses a Postgres-backed LangGraph checkpointer,
+- tests and lightweight local validation override to the `memory` backend,
+- if `checkpointer_backend=postgres` is requested without the dedicated LangGraph Postgres package installed, runtime fails fast instead of silently falling back to memory.
 
 Reason:
 

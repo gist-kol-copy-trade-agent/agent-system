@@ -6,7 +6,7 @@ The core agent must:
 
 - reason well enough to parse noisy Telegram KOL calls,
 - use tools selectively and with bounded context,
-- survive retries, crashes, and partial failures,
+- survive retries, crashes, and partial failures through a persistent Postgres-backed checkpointer,
 - keep trading actions deterministic after the decision boundary,
 - maintain a clean separation between agent state and business persistence.
 
@@ -15,7 +15,7 @@ The core agent must:
 Based on the LangChain docs:
 
 - `create_agent` is the right abstraction for the standard model-tools loop.
-- LangGraph is the right runtime for durable execution, checkpoints, thread-scoped state, and recovery.
+- LangGraph is the right runtime for checkpoints, thread-scoped state, and recovery.
 - middleware is the right place for context engineering, dynamic prompt shaping, and tool filtering.
 - runtime context is the right place for dependency injection.
 - short-term memory belongs in graph state and checkpointer-backed threads.
@@ -27,6 +27,12 @@ For this product, the recommended architecture is:
 - LangGraph state graph for orchestration and failure recovery.
 - OKX OnchainOS skills loaded by the agent as prompt specializations.
 - Application services mainly for skill loading, deterministic execution control, TA calculation, Telegram IO, and persistence.
+
+Current MVP note:
+
+- runtime orchestration is implemented with LangGraph,
+- the default runtime is configured for a Postgres-backed LangGraph checkpointer,
+- tests and minimal local validation can still override the backend to `memory`.
 
 The product also has two execution lanes:
 

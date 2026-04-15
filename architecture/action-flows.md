@@ -28,6 +28,7 @@ Inputs:
 
 - source channel metadata
 - Telegram message payload
+- optional image blobs from the scraper webhook when the Telegram message contains media
 - receive timestamp
 
 Persist:
@@ -54,6 +55,13 @@ Expected output:
 - structured parse result
 - `is_trade_call`
 - extracted symbol / CA / chain hints
+- optional supporting context extracted from attached chart / TA images when present
+
+Notes:
+
+- if the inbound message has one or more image blobs, the parsing agent should inspect them as supporting evidence
+- image analysis is optional and must not run when no image is present
+- images are primarily used to capture supporting TA annotations or chart context that accompany the text message
 
 Persist:
 
@@ -95,7 +103,21 @@ Model call: no
 Tools:
 
 - deterministic app-side resolution using parse output
-- optional read-only `onchainos` lookup outside the model when needed for exact normalization
+- optional read-only `onchainos token search` outside the model when symbol + chain exist but contract is still missing
+
+Current MVP runtime behavior:
+
+- `major lane`
+  - resolve through a product-owned `MajorAssetRegistry`
+  - map `BTC/ETH/SOL` to approved X Layer execution tokens such as `xlayer:WBTC`, `xlayer:WETH`, `xlayer:SOL`
+  - block if the mapping is missing
+- `regular lane`
+  - require deterministic identity confirmation before downstream trading
+  - if parser already provides `contract + chain`, accept that resolved asset
+  - if parser only provides `symbol + chain`, attempt deterministic `onchainos token search --query <symbol> --chains <chain>`
+  - if exactly one candidate is returned, promote it to resolved
+  - if multiple candidates remain, block with `TOKEN_AMBIGUOUS`
+  - if no contract can be confirmed, block with `TOKEN_UNRESOLVED`
 
 Persist:
 
@@ -152,6 +174,14 @@ Tools:
 Persist:
 
 - TA snapshot
+
+Current MVP anti-FOMO input behavior:
+
+- `call_reference_price_usd` is derived from `entry_reference_text`
+- the runtime currently supports:
+  - explicit entry price such as `entry around 3200`
+  - entry ranges such as `entry 3200-3300`
+- target and stop references are not used as fallback for anti-FOMO input in the current MVP runtime
 
 ### Step 8: Decision Synthesis
 Model call: yes
@@ -434,6 +464,9 @@ Output to user:
 - extracted call count
 - estimated win-rate or 1-day follow-through
 - suggested conviction
+- biggest observed winner
+- major-vs-regular asset bias
+- pattern breakdown
 - explicit question: follow this channel or not
 
 Persist:

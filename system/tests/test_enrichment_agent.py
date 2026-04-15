@@ -53,6 +53,14 @@ class FakeEnrichmentBackend:
                     "risk_summary": "Major-asset lane skips regular-token risk scan.",
                 },
                 "signal_overlay": None,
+                "wallet_summary": "Wallet is authenticated on X Layer with sufficient buying power.",
+                "market_summary": "ETH market context is available with positive price change and usable quote depth.",
+                "risk_summary_long": "Major-asset lane skips regular-token risk scanning and relies on market plus TA context.",
+                "overlay_summary_long": "",
+                "evidence_points": [
+                    "Wallet logged in on xlayer.",
+                    "Spot price is 3200.0 USD with recent upward candles.",
+                ],
             }
         return {
             "wallet_snapshot": {
@@ -102,6 +110,15 @@ class FakeEnrichmentBackend:
                 "whale_count": 0,
                 "overlay_summary": "Regular token overlay context.",
             },
+            "wallet_summary": "Wallet is ready on the target chain with enough balance for a bounded trade.",
+            "market_summary": "Market context shows active liquidity, non-empty kline history, and a live quote.",
+            "risk_summary_long": "Risk scan is supported and the token is not currently flagged as risky.",
+            "overlay_summary_long": "Overlay signals show some smart-money participation with limited whale presence.",
+            "evidence_points": [
+                "Liquidity is 200000.0 USD.",
+                "Kline window has at least two candles.",
+                "Smart money count is 2.",
+            ],
         }
 
 
@@ -114,3 +131,5 @@ def test_regular_lane_enrichment_output_contract() -> None:
     )
     assert result["wallet_snapshot"]["wallet_address"] == "0xregular"
     assert result["risk_snapshot"]["risk_scan_required"] is True
+    assert result["market_summary"] != ""
+    assert len(result["evidence_points"]) >= 2

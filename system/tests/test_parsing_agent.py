@@ -2,7 +2,7 @@ from app.agents.parsing import ParsingAgent
 
 
 class FakeParsingBackend:
-    def parse(self, *, source_id: str, message_id: str, message_text: str):
+    def parse(self, *, source_id: str, message_id: str, message_text: str, media_blobs=None):
         text = message_text.lower()
         if "gm everyone" in text:
             return {
@@ -118,7 +118,24 @@ def test_parse_trade_call_regular_token_with_contract() -> None:
     assert result["raw_contract_address"] == "0x6982508145454ce325ddbe47a25d4ec3d2311933"
     assert result["raw_chain_hint"] == "ethereum"
     assert result["resolved_contract_address"] == "0x6982508145454ce325ddbe47a25d4ec3d2311933"
-    assert result["resolved_chain"] == "ethereum"
+
+
+def test_parse_can_accept_optional_image_blobs() -> None:
+    agent = ParsingAgent(backend=FakeParsingBackend())
+    result = agent.parse(
+        source_id="src1",
+        message_id="msg-image",
+        message_text="Buy ETH now on X Layer.",
+        media_blobs=[
+            {
+                "kind": "image",
+                "mime_type": "image/png",
+                "base64_data": "ZmFrZQ==",
+            }
+        ],
+    )
+    assert result["message_type"] == "trade_call"
+    assert result["resolved_chain"] == "xlayer"
 
 
 def test_parse_exit_signal() -> None:

@@ -60,6 +60,7 @@ class SignalWorkflowRuntime:
                     source_id=workflow.payload.source_id,
                     message_id=workflow.payload.message_id,
                     message_text=workflow.payload.message_text,
+                    media_blobs=workflow.payload.media_blobs,
                 ),
                 thread_id=workflow.thread_id,
             )
@@ -84,6 +85,7 @@ class SignalWorkflowRuntime:
                 related_position_id=None,
                 status="completed",
                 last_node=_infer_signal_last_node(state),
+                run_metadata=_extract_explainability_metadata(state),
             )
         )
         return state
@@ -174,6 +176,7 @@ class ExitWorkflowRuntime:
                 related_position_id=position.position_id,
                 status="completed",
                 last_node=_infer_exit_last_node(state),
+                run_metadata=_extract_explainability_metadata(state),
             )
         )
         return state
@@ -216,3 +219,35 @@ def _infer_exit_last_node(state: dict[str, Any]) -> str:
     if state.get("position_snapshot") is not None:
         return "load_position"
     return "load_position"
+
+
+def _extract_explainability_metadata(state: dict[str, Any]) -> dict[str, Any]:
+    explanation_keys = [
+        "parse_explanation",
+        "enrichment_explanation",
+        "ta_explanation",
+        "decision_explanation",
+        "policy_explanation",
+        "execution_receipt_explanation",
+        "position_tracking_explanation",
+        "exit_ta_explanation",
+        "exit_decision_explanation",
+        "exit_policy_explanation",
+        "exit_execution_receipt_explanation",
+    ]
+    explanations = {
+        key: state.get(key)
+        for key in explanation_keys
+        if state.get(key) is not None
+    }
+    metadata: dict[str, Any] = {
+        "execution_trace": state.get("execution_trace") or [],
+        "explanations": explanations,
+    }
+    if state.get("trade_decision") is not None:
+        metadata["decision"] = state.get("trade_decision")
+    if state.get("exit_decision") is not None:
+        metadata["decision"] = state.get("exit_decision")
+    if state.get("execution_result") is not None:
+        metadata["execution_result"] = state.get("execution_result")
+    return metadata

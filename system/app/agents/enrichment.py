@@ -75,6 +75,11 @@ class EnrichmentOutput(BaseModel):
     market_snapshot: MarketSnapshotOutput
     risk_snapshot: RiskSnapshotOutput
     signal_overlay: SignalOverlayOutput | None = None
+    wallet_summary: str = ""
+    market_summary: str = ""
+    risk_summary_long: str = ""
+    overlay_summary_long: str = ""
+    evidence_points: list[str] = Field(default_factory=list)
 
 
 class EnrichmentBackend(Protocol):
@@ -160,6 +165,7 @@ class LangChainEnrichmentBackend:
             "If wallet_context_hints are missing or stale, you must resolve via okx-agentic-wallet using wallet status and wallet addresses before continuing. "
             "For market context, you must load okx-dex-market and gather both spot/quote data and a recent kline window suitable for TA. "
             "The returned market_snapshot must always include kline_window as a non-empty list when market data is available. "
+            "Also populate wallet_summary, market_summary, risk_summary_long, overlay_summary_long, and evidence_points with concise user-facing explanations grounded in the collected data. "
             "Return structured snapshots only. Do not make the trade decision."
         )
         self._agent = create_agent(
@@ -193,6 +199,7 @@ class LangChainEnrichmentBackend:
             "For market data, load okx-dex-market and explicitly call the market commands needed to populate market_snapshot, including market kline.\n"
             "For regular-token risk data, load okx-security and token intelligence context as needed.\n"
             "Do not omit market_snapshot.kline_window. If you cannot obtain it, return an empty list rather than fabricating candles.\n"
+            "Summarize the wallet, market, risk, and overlay context in the explanation fields, and include concrete evidence_points the renderer can reuse.\n"
             "Return normalized snapshots only.\n"
             + json.dumps(payload, ensure_ascii=True)
         )

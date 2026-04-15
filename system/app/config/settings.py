@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ModelSettings(BaseModel):
-    parsing_model: str = "openai:gpt-5.3-mini"
+    parsing_model: str = "openai:gpt-5.3"
     enrichment_model: str = "openai:gpt-5.4"
     decision_model: str = "openai:gpt-5.4"
     exit_model: str = "openai:gpt-5.4"
@@ -30,7 +30,7 @@ class OpenAISettings(BaseModel):
 
 
 class LangGraphSettings(BaseModel):
-    checkpointer_backend: Literal["memory", "postgres"] = "memory"
+    checkpointer_backend: Literal["memory", "postgres"] = "postgres"
     signal_durability: Literal["exit", "async", "sync"] = "sync"
     exit_durability: Literal["exit", "async", "sync"] = "sync"
     command_durability: Literal["exit", "async", "sync"] = "async"
@@ -55,6 +55,15 @@ class MonitoringSettings(BaseModel):
     cron_exit_evaluation_enabled: bool = True
 
 
+class ScraperSettings(BaseModel):
+    base_url: str | None = None
+    timeout_seconds: int = 15
+
+
+class NotificationSettings(BaseModel):
+    mode: Literal["compact", "standard", "demo_longform"] = "standard"
+
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OKX_AGENT_", env_nested_delimiter="__", case_sensitive=False)
 
@@ -66,6 +75,8 @@ class AppSettings(BaseSettings):
     wallet: WalletSettings = Field(default_factory=WalletSettings)
     persistence: PersistenceSettings = Field(default_factory=PersistenceSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+    scraper: ScraperSettings = Field(default_factory=ScraperSettings)
+    notifications: NotificationSettings = Field(default_factory=NotificationSettings)
 
 
 @lru_cache(maxsize=1)

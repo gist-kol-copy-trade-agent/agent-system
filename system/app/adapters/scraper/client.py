@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 
@@ -22,12 +23,15 @@ class ScraperHistoricalProfileRequest:
     lookback_days: int = 7
 
 
-class ScraperClient:
+class ScraperClient(ABC):
+    @abstractmethod
     def request_channel_profile(self, request: ScraperHistoricalProfileRequest) -> dict:
-        raise NotImplementedError("Scraper historical profiling is implemented in a later phase.")
+        """Start historical profiling for a source."""
 
+    @abstractmethod
     def register_channel(self, request: ScraperRegistrationRequest) -> dict:
-        raise NotImplementedError("Scraper registration is implemented in a later phase.")
+        """Register a live channel subscription with the scraper."""
 
+    @abstractmethod
     def unregister_channel(self, *, source_id: str, channel_name: str) -> dict:
-        raise NotImplementedError("Scraper unregistration is implemented in a later phase.")
+        """Unregister a live channel subscription from the scraper."""

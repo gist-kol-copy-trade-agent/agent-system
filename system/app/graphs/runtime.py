@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Any
 
 try:
@@ -8,16 +9,33 @@ except ModuleNotFoundError:  # pragma: no cover - dependency fallback for scaffo
 
         pass
 
-from app.config.settings import get_settings
+from app.config.settings import AppSettings, get_settings
 
 
-def build_checkpointer() -> Any:
-    settings = get_settings()
-    if settings.langgraph.checkpointer_backend == "memory":
+@lru_cache(maxsize=4)
+def _build_cached_checkpointer(backend: str, database_url: str) -> Any:
+    if backend == "memory":
         return InMemorySaver()
 
-    # Postgres-backed checkpointer can be added in a later phase.
-    return InMemorySaver()
+    try:
+        from langgraph.checkpoint.postgres import PostgresSaver
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional integration
+        raise RuntimeError(
+            "LangGraph Postgres checkpointer backend was requested, but "
+            "`langgraph-checkpoint-postgres` is not installed."
+        ) from exc
+
+    saver = PostgresSaver.from_conn_string(database_url)
+    saver.setup()
+    return saver
+
+
+def build_checkpointer(settings: AppSettings | None = None) -> Any:
+    resolved = settings or get_settings()
+    return _build_cached_checkpointer(
+        resolved.langgraph.checkpointer_backend,
+        resolved.persistence.database_url,
+    )
 
 
 def build_thread_id(prefix: str, identifier: str) -> str:

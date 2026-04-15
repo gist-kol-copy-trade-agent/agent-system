@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from app.http_app import ScraperFollowProfileWebhookHandler, ScraperWebhookHandler
 from app.schemas.commands import CommandResponse
@@ -62,6 +63,7 @@ class _FakeRouter:
 def test_scraper_webhook_handler_accepts_signed_payload() -> None:
     runtime = _FakeRuntime()
     handler = ScraperWebhookHandler(runtime, webhook_secret="secret")
+    timestamp = datetime.now(UTC).isoformat()
     payload = ScraperWebhookPayload(
         event_id="evt-1",
         event_type="telegram.message.new",
@@ -70,17 +72,19 @@ def test_scraper_webhook_handler_accepts_signed_payload() -> None:
         message_id="m1",
         message_text="buy eth",
         message_timestamp="2026-01-01T00:00:00Z",
+        media_blobs=[],
         raw_payload={},
     )
     body = payload.model_dump_json().encode()
-    signature = runtime.webhook_intake.build_signature(body=body, timestamp="123", secret="secret")
+    signature = runtime.webhook_intake.build_signature(body=body, timestamp=timestamp, secret="secret")
 
-    result = handler.handle(body=body, timestamp="123", signature=signature)
+    result = handler.handle(body=body, timestamp=timestamp, signature=signature)
 
     assert result.status_code == 202
     assert result.body["ok"] is True
     assert result.body["thread_id"] == "signal:evt-1"
-    assert result.body["policy_action"] == "execute"
+    assert result.body["workflow_type"] == "signal-intake"
+    assert result.body["status"] == "accepted"
 
 
 def test_telegram_command_service_routes_text_to_router() -> None:
@@ -93,6 +97,7 @@ def test_telegram_command_service_routes_text_to_router() -> None:
 def test_follow_profile_webhook_handler_accepts_signed_payload() -> None:
     runtime = _FakeRuntime()
     follow_handler = ScraperFollowProfileWebhookHandler(runtime, webhook_secret="secret")
+    timestamp = datetime.now(UTC).isoformat()
     payload = ScraperFollowProfileWebhookPayload(
         event_id="evt-follow-1",
         event_type="telegram.follow_profile.ready",
@@ -107,14 +112,15 @@ def test_follow_profile_webhook_handler_accepts_signed_payload() -> None:
                 "message_text": "BUY ETH",
                 "message_timestamp": "2026-01-01T00:00:00Z",
                 "message_url": "https://t.me/alpha/1",
+                "media_blobs": [],
             }
         ],
         raw_payload={},
     )
     body = payload.model_dump_json().encode()
-    signature = runtime.webhook_intake.build_signature(body=body, timestamp="123", secret="secret")
+    signature = runtime.webhook_intake.build_signature(body=body, timestamp=timestamp, secret="secret")
 
-    result = follow_handler.handle(body=body, timestamp="123", signature=signature)
+    result = follow_handler.handle(body=body, timestamp=timestamp, signature=signature)
 
     assert result.status_code == 202
     assert result.body["ok"] is True

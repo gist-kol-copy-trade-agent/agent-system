@@ -22,6 +22,7 @@ def build_context(lane: str = "major") -> dict:
         "market_snapshot": {
             "quote_available": True,
             "liquidity_usd": 100000 if lane == "regular" else None,
+            "quote_price_impact_pct": 0.2,
         },
         "risk_snapshot": {
             "risk_scan_required": lane == "regular",
@@ -34,12 +35,19 @@ def build_context(lane: str = "major") -> dict:
         },
         "ta_snapshot": {
             "ta_score": 0.8 if lane == "major" else 0.8,
+            "price_deviation_pct": 1.0,
         },
         "strategy_profile": {
             "major_asset_lane_enabled": True,
             "regular_token_lane_enabled": True,
             "min_liquidity_usd_regular": 50000,
+            "max_active_positions": 3,
+            "max_slippage_pct_major": 0.5,
+            "max_slippage_pct_regular": 2.0,
+            "max_price_deviation_pct_major": 3.0,
+            "max_price_deviation_pct_regular": 5.0,
         },
+        "active_position_count": 0,
     }
 
 
@@ -78,3 +86,33 @@ def test_policy_engine_blocks_regular_when_liquidity_too_low() -> None:
     assert result.passed is False
     assert result.action == "block"
     assert "REGULAR_LIQUIDITY_TOO_LOW" in result.failure_codes
+
+
+def test_policy_engine_skips_when_max_active_positions_reached() -> None:
+    engine = DefaultTradePolicyEngine(DecisionAgentConfig())
+    context = build_context("major")
+    context["active_position_count"] = 3
+    result = engine.evaluate(context)
+    assert result.passed is False
+    assert result.action == "skip"
+    assert "MAX_ACTIVE_POSITIONS_REACHED" in result.failure_codes
+
+
+def test_policy_engine_blocks_when_price_impact_too_high() -> None:
+    engine = DefaultTradePolicyEngine(DecisionAgentConfig())
+    context = build_context("regular")
+    context["market_snapshot"]["quote_price_impact_pct"] = 5.0
+    result = engine.evaluate(context)
+    assert result.passed is False
+    assert result.action == "block"
+    assert "PRICE_IMPACT_TOO_HIGH" in result.failure_codes
+
+
+def test_policy_engine_skips_when_deviation_too_high() -> None:
+    engine = DefaultTradePolicyEngine(DecisionAgentConfig())
+    context = build_context("major")
+    context["ta_snapshot"]["price_deviation_pct"] = 8.0
+    result = engine.evaluate(context)
+    assert result.passed is False
+    assert result.action == "skip"
+    assert "MAJOR_FOMO_TOO_HIGH" in result.failure_codes

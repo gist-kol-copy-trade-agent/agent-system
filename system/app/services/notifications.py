@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 from app.adapters.telegram.client import TelegramClient
+from app.config.settings import get_settings
 from app.persistence.repositories import TelegramNotificationRecord, TelegramNotificationRepository, utc_now_iso
 
 try:
@@ -50,9 +53,11 @@ class NotificationService:
         *,
         telegram_client: TelegramClient,
         notification_repository: TelegramNotificationRepository | None = None,
+        mode: str | None = None,
     ) -> None:
         self.telegram_client = telegram_client
         self.notification_repository = notification_repository
+        self.mode = mode or get_settings().notifications.mode
 
     def send_exit_notification(
         self,
@@ -61,6 +66,7 @@ class NotificationService:
         chat_id: str,
         position_id: str,
         message_text: str,
+        explanation_payload: dict[str, Any] | None = None,
     ) -> None:
         send_status = "sent"
         sent_at = utc_now_iso()
@@ -79,6 +85,7 @@ class NotificationService:
                     related_position_id=position_id,
                     notification_type="exit_evaluation",
                     message_text=message_text,
+                    explanation_payload=explanation_payload,
                     send_status=send_status,
                     sent_at=sent_at,
                 )
@@ -92,6 +99,7 @@ class NotificationService:
         signal_id: str,
         position_id: str | None,
         message_text: str,
+        explanation_payload: dict[str, Any] | None = None,
     ) -> None:
         send_status = "sent"
         sent_at = utc_now_iso()
@@ -110,6 +118,7 @@ class NotificationService:
                     related_position_id=position_id,
                     notification_type="trade_execution",
                     message_text=message_text,
+                    explanation_payload=explanation_payload,
                     send_status=send_status,
                     sent_at=sent_at,
                 )
@@ -125,8 +134,15 @@ class NotificationService:
         related_position_id: str | None = None,
         stage: str,
         details: dict | None = None,
+        explanation: dict[str, Any] | None = None,
     ) -> None:
-        formatted_text = self._format_progress_message(stage=stage, raw_summary=message_text, details=details or {})
+        formatted_text = self._format_progress_message(
+            stage=stage,
+            raw_summary=message_text,
+            details=details or {},
+            explanation=explanation or {},
+            mode=self.mode,
+        )
         send_status = "sent"
         sent_at = utc_now_iso()
         try:
@@ -144,6 +160,7 @@ class NotificationService:
                     related_position_id=related_position_id,
                     notification_type=f"progress:{stage}",
                     message_text=formatted_text,
+                    explanation_payload=explanation or None,
                     send_status=send_status,
                     sent_at=sent_at,
                 )
@@ -158,6 +175,7 @@ class NotificationService:
         message_text: str,
         related_signal_id: str | None = None,
         related_position_id: str | None = None,
+        explanation_payload: dict[str, Any] | None = None,
     ) -> None:
         send_status = "sent"
         sent_at = utc_now_iso()
@@ -176,82 +194,97 @@ class NotificationService:
                     related_position_id=related_position_id,
                     notification_type=notification_type,
                     message_text=message_text,
+                    explanation_payload=explanation_payload,
                     send_status=send_status,
                     sent_at=sent_at,
                 )
             )
 
     @staticmethod
-    def _format_progress_message(*, stage: str, raw_summary: str, details: dict) -> str:
-        def block(title: str, value) -> str:
-            return f"{title}: {value}"
-
-        templates = {
-            "parse": (
-                "🔎 Signal Parsed\n"
-                f"{block('Asset', details.get('asset', 'unknown'))}\n"
-                f"{block('Type', details.get('message_type', 'unknown'))}\n"
-                f"{block('Actionable', details.get('actionable', 'unknown'))}\n"
-                f"{block('Confidence', details.get('confidence', 'n/a'))}\n"
-                f"{block('Chain Hint', details.get('chain', 'unknown'))}\n"
-                "Next: Lane classification and context gathering."
-            ),
-            "enrichment": (
-                "🧩 Context Ready\n"
-                f"{block('Lane', details.get('lane', 'unknown'))}\n"
-                f"{block('Execution Chain', details.get('chain', 'unknown'))}\n"
-                f"{block('Spot Price', details.get('price', 'n/a'))}\n"
-                f"{block('Wallet Ready', details.get('wallet_ready', 'unknown'))}\n"
-                f"{block('Risk Scan', details.get('risk_scan', 'n/a'))}\n"
-                f"{block('Kline Points', details.get('kline_points', 'n/a'))}\n"
-                "Next: TA scoring and trade decision."
-            ),
-            "decision": (
-                "🧠 Decision Drafted\n"
-                f"{block('Action', details.get('action', 'unknown'))}\n"
-                f"{block('Reason', details.get('reason', 'unknown'))}\n"
-                f"{block('Amount USD', details.get('amount_usd', 'n/a'))}\n"
-                f"{block('Confidence', details.get('confidence', 'n/a'))}\n"
-                "Next: Policy gate validation."
-            ),
-            "policy_gate": (
-                "🛡️ Policy Gate\n"
-                f"{block('Passed', details.get('passed', 'unknown'))}\n"
-                f"{block('Action', details.get('action', 'unknown'))}\n"
-                f"{block('Failures', details.get('failures', []))}\n"
-                "Next: Execute only if all hard checks pass."
-            ),
-            "exit_ta": (
-                "📉 Exit Monitoring\n"
-                f"{block('Symbol', details.get('symbol', 'unknown'))}\n"
-                f"{block('PnL %', details.get('pnl_pct', 'n/a'))}\n"
-                f"{block('Drawdown %', details.get('drawdown_pct', 'n/a'))}\n"
-                f"{block('Triggers', details.get('triggers', 'n/a'))}\n"
-                "Next: Exit decision evaluation."
-            ),
-            "exit_decision": (
-                "🚪 Exit Decision Drafted\n"
-                f"{block('Action', details.get('action', 'unknown'))}\n"
-                f"{block('Reason', details.get('reason', 'unknown'))}\n"
-                f"{block('Confidence', details.get('confidence', 'n/a'))}\n"
-                "Next: Exit policy gate validation."
-            ),
-            "exit_policy_gate": (
-                "🛡️ Exit Policy Gate\n"
-                f"{block('Passed', details.get('passed', 'unknown'))}\n"
-                f"{block('Action', details.get('action', 'unknown'))}\n"
-                f"{block('Failures', details.get('failures', []))}\n"
-                "Next: Persist hold/trailing state or execute sell."
-            ),
+    def _format_progress_message(
+        *,
+        stage: str,
+        raw_summary: str,
+        details: dict,
+        explanation: dict[str, Any],
+        mode: str,
+    ) -> str:
+        stage_titles = {
+            "parse": "🔎 Signal Parsed",
+            "enrichment": "🧩 Context Ready",
+            "decision": "🧠 Decision Drafted",
+            "policy_gate": "🛡️ Policy Gate",
+            "exit_ta": "📉 Exit Monitoring",
+            "exit_decision": "🚪 Exit Decision Drafted",
+            "exit_policy_gate": "🛡️ Exit Policy Gate",
         }
-        return templates.get(
-            stage,
-            (
-                "📡 Strategy Update\n"
-                f"{block('Stage', stage)}\n"
-                f"{block('Details', raw_summary)}"
-            ),
-        )
+        next_steps = {
+            "parse": "Lane classification and context gathering.",
+            "enrichment": "TA scoring and trade decision.",
+            "decision": "Policy gate validation.",
+            "policy_gate": "Execute only if all hard checks pass.",
+            "exit_ta": "Exit decision evaluation.",
+            "exit_decision": "Exit policy gate validation.",
+            "exit_policy_gate": "Persist hold/trailing state or execute sell.",
+        }
+        detail_labels = {
+            "asset": "Asset",
+            "message_type": "Type",
+            "actionable": "Actionable",
+            "confidence": "Confidence",
+            "chain": "Chain Hint",
+            "lane": "Lane",
+            "price": "Spot Price",
+            "wallet_ready": "Wallet Ready",
+            "risk_scan": "Risk Scan",
+            "kline_points": "Kline Points",
+            "action": "Action",
+            "reason": "Reason",
+            "amount_usd": "Amount USD",
+            "passed": "Passed",
+            "failures": "Failures",
+            "symbol": "Symbol",
+            "pnl_pct": "PnL %",
+            "drawdown_pct": "Drawdown %",
+            "triggers": "Triggers",
+        }
+
+        lines = [stage_titles.get(stage, "📡 Strategy Update"), ""]
+        summary = explanation.get("summary") or raw_summary
+        if summary:
+            lines.extend(["Summary", str(summary)])
+
+        fact_lines = []
+        for key, value in details.items():
+            if value in (None, "", []):
+                continue
+            label = detail_labels.get(key, key.replace("_", " ").title())
+            fact_lines.append(f"- {label}: {value}")
+        if fact_lines:
+            lines.extend(["", "Facts"] + fact_lines)
+
+        evidence_points = [str(point) for point in (explanation.get("evidence_points") or []) if point]
+        if mode in {"standard", "demo_longform"} and evidence_points:
+            max_points = 2 if mode == "standard" else 4
+            lines.extend(["", "Reasoning"] + [f"- {point}" for point in evidence_points[:max_points]])
+
+        long_form_message = explanation.get("long_form_message")
+        if mode == "demo_longform" and long_form_message:
+            lines.extend(["", "Analyst Note", str(long_form_message)])
+
+        next_step = next_steps.get(stage)
+        if next_step:
+            lines.extend(["", f"Next: {next_step}"])
+        if mode == "compact":
+            compact_lines = [stage_titles.get(stage, "📡 Strategy Update")]
+            if summary:
+                compact_lines.append(str(summary))
+            if fact_lines[:3]:
+                compact_lines.extend(fact_lines[:3])
+            if next_step:
+                compact_lines.append(f"Next: {next_step}")
+            return "\n".join(compact_lines)
+        return "\n".join(lines)
 
 
 class RecordingTelegramClient(TelegramClient):

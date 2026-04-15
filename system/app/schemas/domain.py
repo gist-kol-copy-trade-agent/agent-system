@@ -4,6 +4,14 @@ from typing import Literal, TypedDict
 AssetLane = Literal["major", "regular"]
 
 
+class ExplanationArtifact(TypedDict):
+    title: str
+    summary: str
+    evidence_points: list[str]
+    key_metrics: dict[str, str | float | int | bool | None]
+    long_form_message: str | None
+
+
 class ParsedSignal(TypedDict):
     source_id: str
     message_id: str
@@ -23,6 +31,10 @@ class ParsedSignal(TypedDict):
     resolved_decimals: int | None
     confidence: float
     reasoning_summary: str
+
+
+class ParseExplanation(ExplanationArtifact):
+    pass
 
 
 class ResolvedAsset(TypedDict):
@@ -49,6 +61,10 @@ class WalletSnapshot(TypedDict):
     policy_single_tx_limit_usd: float | None
     policy_daily_trade_limit_usd: float | None
     policy_daily_trade_used_usd: float | None
+
+
+class EnrichmentExplanation(ExplanationArtifact):
+    pass
 
 
 class MarketSnapshot(TypedDict):
@@ -91,6 +107,10 @@ class TASnapshot(TypedDict):
     liquidity_gate_passed: bool | None
     ta_score: float
     ta_summary: str
+
+
+class TAExplanation(ExplanationArtifact):
+    pass
 
 
 class PositionSnapshot(TypedDict):
@@ -163,6 +183,10 @@ class ExitTASnapshot(TypedDict):
     exit_ta_summary: str
 
 
+class ExitTAExplanation(ExplanationArtifact):
+    pass
+
+
 class ExitDecision(TypedDict):
     asset_lane: AssetLane
     decision: Literal["hold", "exit_hard", "exit_trailing_arm", "exit_trailing_fire"]
@@ -170,6 +194,30 @@ class ExitDecision(TypedDict):
     confidence: float
     rationale_summary: str
     telegram_summary: str
+    trigger_reasoning: str
+    trailing_plan: str
+    risk_protection_summary: str
+    user_message_long: str
+
+
+class DecisionExplanation(ExplanationArtifact):
+    pass
+
+
+class PolicyExplanation(ExplanationArtifact):
+    pass
+
+
+class ExecutionReceiptExplanation(ExplanationArtifact):
+    pass
+
+
+class ExitExplanation(ExplanationArtifact):
+    pass
+
+
+class FollowProfileExplanation(ExplanationArtifact):
+    pass
 
 
 class ExitExecutionRequest(TypedDict):

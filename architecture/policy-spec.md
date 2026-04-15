@@ -90,6 +90,15 @@ If no token contract can be resolved:
 
 - `block: TOKEN_UNRESOLVED`
 
+Current MVP runtime interpretation:
+
+- parser output alone is not the source of truth for regular-token resolution
+- if parser provides `contract + chain`, the runtime accepts that as resolved
+- if parser provides only `symbol + chain`, the runtime attempts deterministic `onchainos token search`
+- one exact candidate -> resolved
+- multiple candidates -> `TOKEN_AMBIGUOUS`
+- zero confirmed candidates -> `TOKEN_UNRESOLVED`
+
 ## 7. Risk Policy
 
 ## 7.1 Major Lane
@@ -169,6 +178,14 @@ Required checks:
 If deviation exceeds threshold:
 
 - `skip: REGULAR_FOMO_TOO_HIGH`
+
+Current MVP runtime interpretation:
+
+- anti-FOMO uses `call_reference_price_usd` derived from `entry_reference_text`
+- accepted patterns currently include:
+  - single entry price
+  - entry range midpoint
+- target and stop texts are intentionally not used as fallback anti-FOMO reference in the current runtime
 
 If liquidity is below threshold:
 

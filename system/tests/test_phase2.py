@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from app.agents.wallet_agent import WalletAgent
 from app.agents.decision import DecisionAgent
 from app.agents.enrichment import EnrichmentAgent
@@ -241,6 +243,18 @@ class FakeFollowProfilingBackend:
             "suggested_conviction": "medium",
             "profiling_summary": f"{channel_name} has decent 1-day follow-through.",
             "notable_patterns": ["Strong on majors", "Noisy on microcaps"],
+            "biggest_win_symbol": "ETH",
+            "biggest_win_return_pct": 18.4,
+            "major_asset_bias": "Performs best on BTC/ETH style momentum calls.",
+            "regular_token_bias": "Less consistent on smaller tokens and microcaps.",
+            "pattern_breakdown": [
+                "Best follow-through occurs when majors are called after pullbacks.",
+                "Smaller-cap calls show wider dispersion in 1-day returns.",
+            ],
+            "user_message_long": (
+                f"{channel_name} looks followable with medium conviction. "
+                "The channel has decent hit rate and stronger historical performance on majors than on smaller tokens."
+            ),
         }
 
 
@@ -429,6 +443,7 @@ def test_follow_profile_callback_then_yes_confirms_follow() -> None:
                     "message_text": "BUY ETH NOW",
                     "message_timestamp": "2026-01-01T00:00:00Z",
                     "message_url": "https://t.me/alpha_kol/1",
+                    "media_blobs": [],
                 }
             ],
             raw_payload={},
@@ -436,11 +451,49 @@ def test_follow_profile_callback_then_yes_confirms_follow() -> None:
     )
     assert accepted.status == "awaiting_confirmation"
     assert accepted.suggested_conviction == "medium"
+    saved = source_repo.get_by_source_id("u1:alpha_kol")
+    assert saved is not None
+    assert saved.profile_summary["biggest_win_symbol"] == "ETH"
+    assert saved.profile_summary["major_asset_bias"] != ""
 
     confirm = router.handle(CommandEnvelope(user_id="u1", chat_id="c1", raw_text="yes"))
     assert confirm.ok is True
     assert confirm.payload["status"] == "active"
     assert confirm.payload["scraper_subscription_id"] == "sub:u1:alpha_kol"
+
+
+def test_follow_profile_message_includes_rich_analysis_sections() -> None:
+    source_repo = InMemoryFollowedSourceRepository()
+    service = FollowCommandService(
+        repository=source_repo,
+        scraper_client=FakeScraperClient(),
+        source_registry=SourceRegistryService(source_repo, FakeScraperClient()),
+        profiling_agent=FollowProfilingAgent(backend=FakeFollowProfilingBackend()),
+        notification_service=None,
+        callback_url="https://bot.example.com/webhooks/scraper/follow-profile",
+        callback_secret="secret",
+    )
+    record = FollowedSourceRecord(
+        source_id="u1:alpha_kol",
+        user_id="u1",
+        channel_name="alpha_kol",
+        channel_url="https://t.me/alpha_kol",
+        status="awaiting_confirmation",
+        suggested_conviction="medium",
+        profile_summary=FakeFollowProfilingBackend().profile(
+            user_id="u1",
+            source_id="u1:alpha_kol",
+            channel_name="alpha_kol",
+            messages=[],
+        ),
+    )
+
+    message = service._format_profile_message(record)
+
+    assert "Analysis" in message
+    assert "Asset Bias" in message
+    assert "Pattern Breakdown" in message
+    assert "Biggest winner" in message
 
 
 def test_start_email_otp_wallet_flow() -> None:
@@ -492,8 +545,9 @@ def test_portfolio_and_history_route_via_specialized_agents() -> None:
 def test_webhook_signature_and_dedupe() -> None:
     intake = WebhookIntakeService(InMemorySourceMessageRepository())
     body = b'{"event":"x"}'
-    sig = intake.build_signature(body=body, timestamp="123", secret="secret")
-    intake.verify_signature(body=body, timestamp="123", secret="secret", provided_signature=sig)
+    timestamp = datetime.now(UTC).isoformat()
+    sig = intake.build_signature(body=body, timestamp=timestamp, secret="secret")
+    intake.verify_signature(body=body, timestamp=timestamp, secret="secret", provided_signature=sig)
 
     payload = ScraperWebhookPayload(
         event_id="evt1",
@@ -503,12 +557,32 @@ def test_webhook_signature_and_dedupe() -> None:
         message_id="m1",
         message_text="buy eth",
         message_timestamp="2026-01-01T00:00:00Z",
+        media_blobs=[],
         raw_payload={},
     )
     accepted = intake.accept_event(payload)
     assert accepted is not None
     assert accepted.thread_id == "signal:evt1"
     assert intake.accept_event(payload) is None
+
+
+def test_webhook_expired_timestamp_raises() -> None:
+    current_time = datetime(2026, 1, 10, tzinfo=UTC)
+    intake = WebhookIntakeService(
+        InMemorySourceMessageRepository(),
+        current_time_provider=lambda: current_time,
+        signature_ttl_seconds=300,
+    )
+    body = b'{"event":"x"}'
+    expired_timestamp = (current_time - timedelta(minutes=10)).isoformat()
+    sig = intake.build_signature(body=body, timestamp=expired_timestamp, secret="secret")
+
+    try:
+        intake.verify_signature(body=body, timestamp=expired_timestamp, secret="secret", provided_signature=sig)
+    except WebhookAuthError:
+        assert True
+        return
+    assert False, "expected WebhookAuthError for expired timestamp"
 
 
 def test_webhook_bad_signature_raises() -> None:
@@ -550,6 +624,7 @@ def test_webhook_enqueue_and_runtime_invocation() -> None:
         message_id="m2",
         message_text="Buy ETH now on X Layer",
         message_timestamp="2026-01-01T00:00:00Z",
+        media_blobs=[],
         raw_payload={},
     )
     accepted = intake.accept_event(payload)
@@ -560,6 +635,11 @@ def test_webhook_enqueue_and_runtime_invocation() -> None:
     assert workflow.thread_id == "signal:evt2"
     assert state["parsed_signal"]["message_type"] == "trade_call"
     assert state["policy_gate_result"]["action"] in {"execute", "skip", "block"}
+    stored = workflow_repo._records[workflow.thread_id]
+    assert stored.status == "completed"
+    assert stored.run_metadata is not None
+    assert "explanations" in stored.run_metadata
+    assert "decision_explanation" in stored.run_metadata["explanations"]
 
 
 def test_signal_workflow_runtime_marks_failed_runs() -> None:
@@ -582,6 +662,7 @@ def test_signal_workflow_runtime_marks_failed_runs() -> None:
         message_id="m-fail",
         message_text="Buy ETH now on X Layer",
         message_timestamp="2026-01-01T00:00:00Z",
+        media_blobs=[],
         raw_payload={},
     )
     accepted = intake.accept_event(payload)
@@ -646,3 +727,8 @@ def test_position_scheduler_enqueue_and_exit_runtime_invocation() -> None:
     assert state["action_type"] == "scheduled_exit_evaluation"
     assert state["position_snapshot"]["position_id"] == "pos-1"
     assert state["strategy_profile"]["trailing_enabled"] is True
+    stored = workflow_repo._records[workflow.thread_id]
+    assert stored.status == "completed"
+    assert stored.run_metadata is not None
+    assert "explanations" in stored.run_metadata
+    assert "exit_decision_explanation" in stored.run_metadata["explanations"]

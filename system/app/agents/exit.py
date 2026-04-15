@@ -19,6 +19,10 @@ class ExitDecisionOutput(BaseModel):
     confidence: float
     rationale_summary: str
     telegram_summary: str
+    trigger_reasoning: str = ""
+    trailing_plan: str = ""
+    risk_protection_summary: str = ""
+    user_message_long: str = ""
 
 
 class ExitBackend(Protocol):
@@ -100,6 +104,8 @@ class LangChainExitBackend:
             "Use position state, market context, deterministic exit TA, and user strategy settings to decide whether to hold, "
             "hard exit, arm trailing logic, or fire a trailing exit. "
             "Use the provided tools for position snapshot, market snapshot, and exit TA. "
+            "Populate explanation fields with concrete reasoning: trigger_reasoning, trailing_plan, risk_protection_summary, and user_message_long. "
+            "The long-form message should explain why the bot is holding or exiting and how trailing or hard-risk rules apply. "
             "Do not call execution tools. Output only the structured schema."
         )
         self._agent = create_agent(
@@ -126,6 +132,7 @@ class LangChainExitBackend:
         return (
             "Make a structured exit decision.\n"
             "Use the tools to inspect normalized position, market, and deterministic exit TA context.\n"
+            "Explain which trigger is active or inactive, how trailing should be managed, and what protects downside from here.\n"
             "Return one of: hold, exit_hard, exit_trailing_arm, exit_trailing_fire.\n"
             + json.dumps(payload, ensure_ascii=True)
         )

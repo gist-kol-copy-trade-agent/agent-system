@@ -16,6 +16,7 @@ class DefaultTradePolicyEngine(TradePolicyEngine):
         risk = context["risk_snapshot"]
         ta = context["ta_snapshot"]
         strategy = context["strategy_profile"]
+        active_position_count = int(context.get("active_position_count") or 0)
 
         action = decision["decision"]
         failure_codes: list[str] = []
@@ -44,6 +45,14 @@ class DefaultTradePolicyEngine(TradePolicyEngine):
                 "skip",
                 self._append(failure_codes, "INSUFFICIENT_CHAIN_BALANCE"),
                 "No executable balance on target chain.",
+            )
+
+        if active_position_count >= int(strategy["max_active_positions"]):
+            return PolicyEvaluation(
+                False,
+                "skip",
+                self._append(failure_codes, "MAX_ACTIVE_POSITIONS_REACHED"),
+                "Maximum active positions threshold has been reached.",
             )
 
         lane = resolved["asset_lane"]
@@ -143,6 +152,35 @@ class DefaultTradePolicyEngine(TradePolicyEngine):
                 self._append(failure_codes, "QUOTE_UNAVAILABLE"),
                 "Quote is unavailable.",
             )
+
+        price_impact = market.get("quote_price_impact_pct")
+        if price_impact is not None:
+            impact_threshold = (
+                strategy["max_slippage_pct_major"] if lane == "major" else strategy["max_slippage_pct_regular"]
+            )
+            if price_impact > impact_threshold:
+                return PolicyEvaluation(
+                    False,
+                    "block",
+                    self._append(failure_codes, "PRICE_IMPACT_TOO_HIGH"),
+                    "Quote price impact exceeds the configured threshold.",
+                )
+
+        deviation = ta.get("price_deviation_pct")
+        if deviation is not None:
+            max_deviation = (
+                strategy["max_price_deviation_pct_major"]
+                if lane == "major"
+                else strategy["max_price_deviation_pct_regular"]
+            )
+            if deviation > max_deviation:
+                code = "MAJOR_FOMO_TOO_HIGH" if lane == "major" else "REGULAR_FOMO_TOO_HIGH"
+                return PolicyEvaluation(
+                    False,
+                    "skip",
+                    self._append(failure_codes, code),
+                    "Price deviation versus call reference exceeds the allowed threshold.",
+                )
 
         if ta["ta_score"] < min_ta:
             code = "MAJOR_TA_WEAK" if lane == "major" else "REGULAR_TA_WEAK"

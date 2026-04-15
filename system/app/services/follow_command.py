@@ -106,13 +106,18 @@ class FollowCommandService:
         )
         response = self.scraper_client.request_channel_profile(request)
         record.profile_job_id = response.get("profile_job_id")
+        record.status = "profiling_pending" if response.get("ok") else "profiling_failed"
         self.repository.save(record)
         return CommandResponse(
             ok=bool(response.get("ok")),
             command="follow",
             message=(
-                f"Started profiling `{channel_name}` over the last 7 days. "
-                "I will send you a retrospective summary and ask for confirmation before live follow."
+                (
+                    f"Started profiling `{channel_name}` over the last 7 days. "
+                    "I will send you a retrospective summary and ask for confirmation before live follow."
+                )
+                if response.get("ok")
+                else str(response.get("message") or "Scraper profiling is unavailable.")
             ),
             payload={
                 "source_id": source_id,
@@ -150,6 +155,7 @@ class FollowCommandService:
                 chat_id=saved.chat_id,
                 notification_type="follow_profile_ready",
                 message_text=self._format_profile_message(saved),
+                explanation_payload=saved.profile_summary,
             )
 
         return FollowProfileAccepted(
@@ -198,6 +204,7 @@ class FollowCommandService:
     def _format_profile_message(self, record: FollowedSourceRecord) -> str:
         profile = record.profile_summary or {}
         patterns = profile.get("notable_patterns") or []
+        pattern_breakdown = profile.get("pattern_breakdown") or []
         lines = [
             "📊 Follow Profile Ready",
             "",
@@ -211,11 +218,27 @@ class FollowCommandService:
             f"- Median 1D return: `{profile.get('median_return_1d_pct', 'n/a')}%`",
             f"- Average 1D return: `{profile.get('average_return_1d_pct', 'n/a')}%`",
         ]
+        if profile.get("biggest_win_symbol") is not None or profile.get("biggest_win_return_pct") is not None:
+            lines.append(
+                f"- Biggest winner: `{profile.get('biggest_win_symbol', 'n/a')}` "
+                f"(`{profile.get('biggest_win_return_pct', 'n/a')}%`)"
+            )
         summary = str(profile.get("profiling_summary", "")).strip()
         if summary:
             lines.extend(["", "Summary", summary])
+        long_message = str(profile.get("user_message_long", "")).strip()
+        if long_message:
+            lines.extend(["", "Analysis", long_message])
+        if profile.get("major_asset_bias") or profile.get("regular_token_bias"):
+            lines.extend(["", "Asset Bias"])
+            if profile.get("major_asset_bias"):
+                lines.append(f"- Majors: {profile.get('major_asset_bias')}")
+            if profile.get("regular_token_bias"):
+                lines.append(f"- Regular tokens: {profile.get('regular_token_bias')}")
         if patterns:
             lines.extend(["", "Patterns"] + [f"- {pattern}" for pattern in patterns])
+        if pattern_breakdown:
+            lines.extend(["", "Pattern Breakdown"] + [f"- {pattern}" for pattern in pattern_breakdown])
         lines.extend(
             [
                 "",

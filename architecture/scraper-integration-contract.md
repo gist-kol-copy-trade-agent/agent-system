@@ -273,7 +273,15 @@ Required:
       "message_id": "123",
       "message_text": "Buy ETH now, target 3.5k",
       "message_timestamp": "2026-04-13T09:15:00Z",
-      "message_url": "https://t.me/some_kol_channel/123"
+      "message_url": "https://t.me/some_kol_channel/123",
+      "media_blobs": [
+        {
+          "kind": "image",
+          "mime_type": "image/jpeg",
+          "telegram_file_id": "123456789",
+          "base64_data": "<base64-image-bytes>"
+        }
+      ]
     }
   ],
   "raw_payload": {
@@ -303,6 +311,12 @@ When this webhook is received, the bot should:
 8. send the analysis to the user and ask whether they want to follow the channel
 
 The webhook handler may enqueue a profiling workflow instead of doing the entire analysis inline.
+
+Media note:
+
+- for messages with Telegram images, scraper should send normalized `media_blobs`
+- `message_url` alone is not enough because the bot must be able to pass image bytes directly into multimodal parsing / profiling
+- MVP requires image blobs only for images; other media types may be omitted or passed only in raw payload
 
 ## Profiling Workflow Output Contract
 
@@ -379,6 +393,14 @@ If verification fails:
   "message_text": "Buy ETH now, target 3.5k",
   "message_timestamp": "2026-04-13T09:15:00Z",
   "message_url": "https://t.me/some_kol_channel/12345",
+  "media_blobs": [
+    {
+      "kind": "image",
+      "mime_type": "image/jpeg",
+      "telegram_file_id": "123456789",
+      "base64_data": "<base64-image-bytes>"
+    }
+  ],
   "raw_payload": {
     "telegram": "original scraper-specific payload"
   }
@@ -394,6 +416,10 @@ If verification fails:
 - `message_id`
 - `message_text`
 - `message_timestamp`
+
+Recommended when media exists:
+
+- `media_blobs`
 
 ## Response
 
@@ -418,6 +444,12 @@ On duplicate:
 ```
 
 ## Bot-Side Behavior
+
+When image blobs are present, the bot should:
+
+- persist them inside the raw webhook payload
+- pass them to the parsing agent as optional multimodal input
+- treat image interpretation as supporting evidence, not as permission to invent missing token identifiers
 
 When the webhook is received, the bot should:
 

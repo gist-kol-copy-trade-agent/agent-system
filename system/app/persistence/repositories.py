@@ -169,6 +169,7 @@ class TelegramNotificationRecord:
     notification_type: str
     message_text: str
     send_status: str
+    explanation_payload: dict | None = None
     sent_at: str | None = None
     created_at: str = ""
 
@@ -427,6 +428,7 @@ class InMemoryTelegramNotificationRepository:
             related_position_id=record.related_position_id,
             notification_type=record.notification_type,
             message_text=record.message_text,
+            explanation_payload=record.explanation_payload,
             send_status=record.send_status,
             sent_at=record.sent_at,
             created_at=created_at,
@@ -918,6 +920,7 @@ class SQLAlchemyTelegramNotificationRepository(_SQLAlchemyRepositoryBase):
                 related_position_id=record.related_position_id,
                 notification_type=record.notification_type,
                 message_text=record.message_text,
+                explanation_json=record.explanation_payload,
                 send_status=record.send_status,
                 sent_at=_parse_datetime(record.sent_at),
             )

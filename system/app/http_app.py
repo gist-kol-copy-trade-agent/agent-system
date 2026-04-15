@@ -36,14 +36,13 @@ class ScraperWebhookHandler:
             return WebhookHTTPResult(status_code=200, body={"ok": True, "deduplicated": True})
 
         workflow = self.runtime.signal_queue.enqueue_signal(accepted)
-        state = self.runtime.signal_runtime.invoke(workflow)
         return WebhookHTTPResult(
             status_code=202,
             body={
                 "ok": True,
                 "thread_id": workflow.thread_id,
                 "workflow_type": workflow.workflow_type,
-                "policy_action": (state.get("policy_gate_result") or {}).get("action"),
+                "status": "accepted",
             },
         )
 
@@ -80,7 +79,7 @@ class ScraperFollowProfileWebhookHandler:
 
 def create_http_app(runtime: ApplicationRuntime, *, webhook_secret: str):
     try:
-        from fastapi import FastAPI, Header, Request
+        from fastapi import BackgroundTasks, FastAPI, Header, Request
         from fastapi.responses import JSONResponse
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise RuntimeError("FastAPI is not installed.") from exc
@@ -101,11 +100,23 @@ def create_http_app(runtime: ApplicationRuntime, *, webhook_secret: str):
     @app.post("/webhooks/scraper/messages")
     async def scraper_webhook(
         request: Request,
+        background_tasks: BackgroundTasks,
         x_scraper_timestamp: str = Header(...),
         x_scraper_signature: str = Header(...),
     ):
         body = await request.body()
         result = handler.handle(body=body, timestamp=x_scraper_timestamp, signature=x_scraper_signature)
+        if result.status_code == 202 and result.body.get("ok") and result.body.get("deduplicated") is not True:
+            thread_id = result.body.get("thread_id")
+            workflow_type = result.body.get("workflow_type")
+            if thread_id and workflow_type:
+                from app.services.workflow_runtime import EnqueuedWorkflow
+
+                payload = ScraperWebhookPayload.model_validate_json(body)
+                background_tasks.add_task(
+                    runtime.signal_runtime.invoke,
+                    EnqueuedWorkflow(thread_id=thread_id, workflow_type=workflow_type, payload=payload),
+                )
         return JSONResponse(status_code=result.status_code, content=result.body)
 
     @app.post("/webhooks/scraper/follow-profile")

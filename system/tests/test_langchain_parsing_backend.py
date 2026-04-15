@@ -39,3 +39,13 @@ def test_parsing_agent_can_use_explicit_langchain_backend() -> None:
     result = agent.parse(source_id="src1", message_id="msg1", message_text="Buy ETH now on X Layer")
     assert result["is_actionable"] is True
     assert result["confidence"] == 0.9
+
+
+def test_parsing_backend_builds_multimodal_content_when_images_exist() -> None:
+    content = LangChainParsingBackend._build_user_content(
+        message_text="Buy ETH now on X Layer",
+        media_blobs=[{"kind": "image", "mime_type": "image/png", "base64_data": "ZmFrZQ=="}],
+    )
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert content[1]["type"] == "image_url"

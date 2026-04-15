@@ -23,11 +23,11 @@ def test_application_runtime_follow_command_persists_source() -> None:
     )
     response = runtime.telegram_router.handle(CommandEnvelope(user_id="u-db-2", chat_id="c-db-2", raw_text="/follow alpha_kol"))
 
-    assert response.ok is True
+    assert response.ok is False
     stored = runtime.source_registry.repository.get_by_source_id("u-db-2:alpha_kol")
     assert stored is not None
-    assert stored.status == "profiling_pending"
-    assert stored.profile_job_id == "profile:u-db-2:alpha_kol"
+    assert stored.status == "profiling_failed"
+    assert stored.profile_job_id is None
 
 
 def test_build_engine_is_cached() -> None:

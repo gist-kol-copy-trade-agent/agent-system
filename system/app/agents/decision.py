@@ -20,6 +20,12 @@ class TradeDecisionOutput(BaseModel):
     capped_amount_usd: float
     rationale_summary: str
     telegram_summary: str
+    analysis_thesis: str = ""
+    ta_reasoning: str = ""
+    risk_reasoning: str = ""
+    sizing_reasoning: str = ""
+    policy_expectation_summary: str = ""
+    user_message_long: str = ""
 
 
 class DecisionBackend(Protocol):
@@ -116,6 +122,8 @@ class LangChainDecisionBackend:
             "Do not call external systems. "
             "Return a structured trade decision with one of: execute, skip, block. "
             "Be lane-aware: major assets and regular tokens have different analysis requirements. "
+            "Populate explanation fields with concrete reasoning grounded in the provided data: analysis_thesis, ta_reasoning, risk_reasoning, sizing_reasoning, policy_expectation_summary, and user_message_long. "
+            "The long-form message should be user-facing, concise but informative, and explain the main drivers behind the decision. "
             "Do not invent missing data. Output only the structured schema."
         )
         self._agent = create_agent(
@@ -153,6 +161,8 @@ class LangChainDecisionBackend:
             "Make a structured trade decision from this context.\n"
             "Assume the enrichment stage already collected all external data. "
             "Do not call any external tools.\n"
+            "Explain what is constructive or risky about the setup, how TA affects conviction, how sizing is capped, "
+            "and what the policy gate is likely to do given the current inputs.\n"
             "Do not assume that omitted context is safe.\n"
             + json.dumps(payload, ensure_ascii=True)
         )

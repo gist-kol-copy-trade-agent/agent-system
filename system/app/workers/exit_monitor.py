@@ -8,9 +8,11 @@ from app.config.settings import get_settings
 from app.services.app_runtime import build_application_runtime
 
 
-def _get_env(name: str, default: str) -> str:
-    value = os.getenv(name, default).strip()
-    return value or default
+def _require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
 
 
 def _cycle_id() -> str:
@@ -18,8 +20,8 @@ def _cycle_id() -> str:
 
 
 def main() -> None:
-    callback_url = _get_env("APP_CALLBACK_URL_MESSAGES", "http://localhost:8000/webhooks/scraper/messages")
-    webhook_secret = _get_env("APP_WEBHOOK_SECRET", "dev-secret")
+    callback_url = _require_env("APP_CALLBACK_URL_MESSAGES")
+    webhook_secret = _require_env("APP_WEBHOOK_SECRET")
     runtime = build_application_runtime(
         callback_url=callback_url,
         callback_secret=webhook_secret,

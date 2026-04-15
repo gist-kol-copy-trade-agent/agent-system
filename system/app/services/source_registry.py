@@ -73,7 +73,10 @@ class SourceRegistryService:
                 status="inactive",
             )
         else:
-            self.scraper_client.unregister_channel(source_id=record.source_id, channel_name=record.channel_name)
-            record.status = "inactive"
-            record.unsubscribed_at = utc_now_iso()
+            response = self.scraper_client.unregister_channel(source_id=record.source_id, channel_name=record.channel_name)
+            if response.get("ok"):
+                record.status = "inactive"
+                record.unsubscribed_at = utc_now_iso()
+            else:
+                record.status = "error"
         return self.repository.save(record)

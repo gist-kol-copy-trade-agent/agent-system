@@ -132,6 +132,10 @@ class NullExitExecutionRunner:
         }
 
 
+class ExitSizingError(RuntimeError):
+    pass
+
+
 @dataclass
 class ExitFlowRequest:
     user_id: str
@@ -167,6 +171,7 @@ class _SequentialCompiledExitGraph:
         route = self.service._route_after_policy_gate(current)
         if route == "persist_evaluation":
             current.update(self.service._node_persist_evaluation(current))
+            current.update(self.service._node_notify_telegram(current))
             return current  # type: ignore[return-value]
 
         current.update(self.service._node_execute_exit(current))
@@ -200,6 +205,7 @@ class ExitGraphService:
         self.evaluation_repository = evaluation_repository or _NullPositionExitEvaluationRepository()
         self.execution_repository = execution_repository
         self.position_event_repository = position_event_repository
+        self.wallet_session_repository = wallet_session_repository
         self.wallet_address_resolver = WalletAddressResolver(wallet_session_repository)
         self.notification_service = notification_service
         self.execution_runner = execution_runner or OnchainOSSwapExitExecutionRunner()
@@ -226,12 +232,17 @@ class ExitGraphService:
             "trailing_state": None,
             "exit_market_snapshot": None,
             "position_tracking_snapshot": None,
+            "position_tracking_explanation": None,
             "exit_ta_snapshot": None,
+            "exit_ta_explanation": None,
             "strategy_profile": None,
             "exit_decision": None,
+            "exit_decision_explanation": None,
             "policy_gate_result": None,
+            "exit_policy_explanation": None,
             "execution_request": None,
             "execution_result": None,
+            "exit_execution_receipt_explanation": None,
             "telegram_summary": None,
             "execution_trace": [],
         }  # type: ignore[return-value]
@@ -275,7 +286,7 @@ class ExitGraphService:
                 END: END,
             },
         )
-        builder.add_edge("persist_evaluation", END)
+        builder.add_edge("persist_evaluation", "notify_telegram")
         builder.add_edge("execute_exit", "persist_exit_result")
         builder.add_edge("persist_exit_result", "notify_telegram")
         builder.add_edge("notify_telegram", END)
@@ -445,6 +456,7 @@ class ExitGraphService:
                 "drawdown_pct": ta.get("drawdown_from_peak_pct"),
                 "triggers": ta.get("exit_ta_summary"),
             },
+            explanation=state.get("exit_ta_explanation"),
         )
 
     def _node_build_exit_inputs(self, state: ExitGraphState) -> dict[str, Any]:
@@ -471,10 +483,15 @@ class ExitGraphService:
             ta_snapshot=ta_snapshot,
             strategy_profile=strategy_profile,
         )
-        return {"exit_decision": decision, "telegram_summary": decision["telegram_summary"]}
+        return {
+            "exit_decision": decision,
+            "exit_decision_explanation": self._build_exit_explanation(decision),
+            "telegram_summary": decision["telegram_summary"],
+        }
 
     def _node_notify_decision_progress(self, state: ExitGraphState) -> dict[str, Any]:
         decision = state["exit_decision"] or {}
+        explanation = state.get("exit_decision_explanation") or {}
         summary = (
             f"Exit decision formed: action={decision.get('decision')}, "
             f"reason={decision.get('decision_reason_code')}."
@@ -487,7 +504,9 @@ class ExitGraphService:
                 "action": decision.get("decision"),
                 "reason": decision.get("decision_reason_code"),
                 "confidence": decision.get("confidence"),
+                "analysis": explanation.get("summary"),
             },
+            explanation=state.get("exit_decision_explanation"),
         )
 
     def _node_apply_exit_policy_gate(self, state: ExitGraphState) -> dict[str, Any]:
@@ -516,6 +535,7 @@ class ExitGraphService:
                 "action": gate.get("action"),
                 "failures": gate.get("failure_codes") or [],
             },
+            explanation=state.get("exit_policy_explanation"),
         )
 
     def _route_after_policy_gate(self, state: ExitGraphState) -> str:
@@ -587,7 +607,11 @@ class ExitGraphService:
         position: PositionSnapshot = state["position_snapshot"]  # type: ignore[assignment]
         strategy = state["strategy_profile"] or {}
         exit_token = "USDC"
-        amount = position["entry_token_amount"] or position["entry_amount_usd"]
+        amount = position["entry_token_amount"]
+        if amount is None or float(amount) <= 0:
+            raise ExitSizingError(
+                f"Cannot execute exit for {position['position_id']} without a confirmed token amount from entry execution."
+            )
         wallet_resolution = self.wallet_address_resolver.resolve_wallet_address_for_chain(
             user_id=str(state.get("user_id") or position["user_id"]),
             chain=position["chain"],
@@ -630,6 +654,11 @@ class ExitGraphService:
         return {
             "execution_request": swap_output["execution_request"],
             "execution_result": swap_output["execution_result"],
+            "exit_execution_receipt_explanation": self._build_execution_receipt_explanation(
+                execution_result=swap_output["execution_result"],
+                trade_side="sell",
+                asset_symbol=str(position["symbol"]),
+            ),
         }
 
     def _node_persist_exit_result(self, state: ExitGraphState) -> dict[str, Any]:
@@ -713,18 +742,113 @@ class ExitGraphService:
 
     def _node_notify_telegram(self, state: ExitGraphState) -> dict[str, Any]:
         execution = state["execution_result"] or {}
-        if execution.get("success"):
-            summary = f"{state['telegram_summary']} Exit execution submitted successfully."
-        else:
-            summary = f"{state['telegram_summary']} Exit execution failed: {execution.get('error_code', 'unknown')}."
+        receipt = state.get("exit_execution_receipt_explanation") or {}
+        decision = state.get("exit_decision") or {}
+        gate = state.get("policy_gate_result") or {}
+        summary = str(state.get("telegram_summary") or decision.get("telegram_summary") or "Exit evaluation completed.")
+        explanation_payload = state.get("exit_execution_receipt_explanation") or state.get("exit_decision_explanation")
+        if execution:
+            if execution.get("success"):
+                summary = f"{summary} Exit execution submitted successfully."
+            else:
+                summary = f"{summary} Exit execution failed: {execution.get('error_code', 'unknown')}."
+            if receipt.get("long_form_message"):
+                summary = f"{summary}\n\n{receipt['long_form_message']}"
+        elif decision.get("user_message_long"):
+            summary = f"{summary}\n\n{decision['user_message_long']}"
+        if gate.get("action") in {"hold", "persist_trailing", "block"}:
+            summary = f"{summary}\n\nFinal action: {gate.get('action')}."
         if self.notification_service is not None:
+            chat_id = self._resolve_notification_chat_id(str(state.get("user_id") or "unknown"))
             self.notification_service.send_exit_notification(
                 user_id=str(state.get("user_id") or "unknown"),
-                chat_id=str(state.get("user_id") or "unknown"),
+                chat_id=chat_id,
                 position_id=str(state.get("position_id") or "unknown"),
                 message_text=summary,
+                explanation_payload=explanation_payload,
             )
         return {"telegram_summary": summary}
+
+    @staticmethod
+    def _build_execution_receipt_explanation(
+        *,
+        execution_result: dict[str, Any],
+        trade_side: str,
+        asset_symbol: str,
+    ) -> dict[str, Any]:
+        success = bool(execution_result.get("success"))
+        amount = execution_result.get("received_token_amount") or execution_result.get("realized_output_amount")
+        output_symbol = execution_result.get("received_token_symbol") or execution_result.get("realized_output_symbol")
+        route_summary = execution_result.get("route_summary")
+        evidence_points = [
+            point
+            for point in [
+                f"Execution id: {execution_result.get('execution_id')}" if execution_result.get("execution_id") else None,
+                f"Swap tx: {execution_result.get('swap_tx_hash')}" if execution_result.get("swap_tx_hash") else None,
+                f"Approval tx: {execution_result.get('approve_tx_hash')}" if execution_result.get("approve_tx_hash") else None,
+                route_summary,
+            ]
+            if point
+        ]
+        if success:
+            long_form_message = execution_result.get("receipt_message_long") or (
+                f"{trade_side.title()} execution for {asset_symbol} succeeded."
+                + (
+                    f" Output: {amount} {output_symbol}."
+                    if amount is not None and output_symbol is not None
+                    else ""
+                )
+                + (f" Route: {route_summary}." if route_summary else "")
+                + (
+                    f" Explorer: {execution_result.get('explorer_url')}."
+                    if execution_result.get("explorer_url")
+                    else ""
+                )
+            )
+            summary = f"{trade_side.title()} execution succeeded."
+        else:
+            long_form_message = execution_result.get("receipt_message_long") or (
+                f"{trade_side.title()} execution for {asset_symbol} failed with "
+                f"{execution_result.get('error_code', 'unknown')}."
+            )
+            summary = f"{trade_side.title()} execution failed."
+        return {
+            "title": f"{trade_side.title()} execution receipt",
+            "summary": summary,
+            "evidence_points": evidence_points,
+            "key_metrics": {
+                "success": success,
+                "execution_id": execution_result.get("execution_id"),
+                "amount": amount,
+                "output_symbol": output_symbol,
+                "effective_price_impact_pct": execution_result.get("effective_price_impact_pct"),
+                "execution_price": execution_result.get("execution_price"),
+            },
+            "long_form_message": long_form_message,
+        }
+
+    @staticmethod
+    def _build_exit_explanation(decision: dict[str, Any]) -> dict[str, Any]:
+        evidence_points = [
+            point
+            for point in [
+                decision.get("trigger_reasoning"),
+                decision.get("trailing_plan"),
+                decision.get("risk_protection_summary"),
+            ]
+            if point
+        ]
+        return {
+            "title": f"Exit decision: {decision.get('decision', 'unknown')}",
+            "summary": decision.get("rationale_summary") or "Exit decision generated.",
+            "evidence_points": evidence_points,
+            "key_metrics": {
+                "decision": decision.get("decision"),
+                "reason_code": decision.get("decision_reason_code"),
+                "confidence": decision.get("confidence"),
+            },
+            "long_form_message": decision.get("user_message_long") or decision.get("telegram_summary"),
+        }
 
     @staticmethod
     def _extract_kline_peak(kline_window: list[dict[str, Any]]) -> float | None:
@@ -742,20 +866,30 @@ class ExitGraphService:
         stage: str,
         summary: str,
         details: dict | None = None,
+        explanation: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         trace = list(state.get("execution_trace") or [])
         trace.append({"stage": stage, "summary": summary})
         if self.notification_service is not None:
+            chat_id = self._resolve_notification_chat_id(str(state.get("user_id") or "unknown"))
             self.notification_service.send_progress_notification(
                 user_id=str(state.get("user_id") or "unknown"),
-                chat_id=str(state.get("user_id") or "unknown"),
+                chat_id=chat_id,
                 related_signal_id=None,
                 related_position_id=str(state.get("position_id") or "unknown"),
                 stage=stage,
                 message_text=summary,
                 details=details,
+                explanation=explanation,
             )
         return {"execution_trace": trace}
+
+    def _resolve_notification_chat_id(self, user_id: str) -> str:
+        if self.wallet_session_repository is not None:
+            session = self.wallet_session_repository.get(user_id)
+            if session is not None and session.chat_id:
+                return session.chat_id
+        return user_id
 
     @staticmethod
     def _parse_datetime(value: str | None) -> datetime | None:

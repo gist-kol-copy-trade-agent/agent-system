@@ -22,6 +22,38 @@ These schemas are intended to become:
   - enrichment context,
   - decision output,
   - execution output.
+- Also distinguish machine-consumed business state from user-facing explanation artifacts.
+
+## 2A. Explanation Artifact Base
+
+Explanation artifacts are first-class structured outputs that summarize why the system reached a state.
+
+They are:
+
+- renderer-friendly,
+- persistable for audit or demo replay,
+- not execution authority,
+- not raw chain-of-thought.
+
+```python
+class ExplanationArtifact(TypedDict):
+    title: str
+    summary: str
+    evidence_points: list[str]
+    key_metrics: dict[str, str | float | int | bool | None]
+    long_form_message: str | None
+```
+
+Specialized variants can inherit from this base shape, such as:
+
+- `ParseExplanation`
+- `EnrichmentExplanation`
+- `TAExplanation`
+- `DecisionExplanation`
+- `PolicyExplanation`
+- `ExecutionReceiptExplanation`
+- `ExitExplanation`
+- `FollowProfileExplanation`
 
 ## 3. Parsed Signal
 
@@ -40,6 +72,12 @@ class ParsedSignal(TypedDict):
     urgency: Literal["low", "normal", "high"] | None
     confidence: float
     reasoning_summary: str
+```
+
+Companion explanation artifact:
+
+```python
+class ParseExplanation(ExplanationArtifact): ...
 ```
 
 ## 4. Asset Lane
@@ -68,6 +106,10 @@ Rules:
 
 - `token_contract_address` may be null for the major lane if the product uses a canonical internal asset mapping.
 - `resolved_signal_chain` may differ from `target_execution_chain` only for the major lane.
+- in the current MVP runtime:
+  - `approved_major_mapping` is a product-owned canonical execution token id such as `xlayer:WETH`
+  - `regular lane` is considered resolved only after deterministic confirmation of `contract + chain`
+  - parser-provided symbol-only clues are not enough by themselves to mark a regular token as resolved
 
 ## 6. Wallet Snapshot
 
@@ -85,6 +127,10 @@ class WalletSnapshot(TypedDict):
     policy_daily_trade_used_usd: float | None
 ```
 
+Companion explanation fields produced by the enrichment agent:
+
+- `wallet_summary`
+
 ## 7. Market Snapshot
 
 ```python
@@ -100,6 +146,11 @@ class MarketSnapshot(TypedDict):
     quote_available: bool
     quote_price_impact_pct: float | None
 ```
+
+Companion explanation fields produced by the enrichment agent:
+
+- `market_summary`
+- `evidence_points`
 
 ## 8. Risk Snapshot
 
@@ -127,6 +178,10 @@ Interpretation:
 - the remaining token-quality fields come from `okx-dex-token advanced-info`
 - for the major lane, most of these fields will normally be null or empty because the full token-risk path is skipped
 
+Companion explanation fields produced by the enrichment agent:
+
+- `risk_summary_long`
+
 ## 9. Signal Overlay Snapshot
 
 ```python
@@ -136,6 +191,16 @@ class SignalOverlaySnapshot(TypedDict):
     kol_count: int | None
     whale_count: int | None
     overlay_summary: str
+```
+
+Companion explanation fields produced by the enrichment agent:
+
+- `overlay_summary_long`
+
+The normalized enrichment output may also carry a separate explanation artifact:
+
+```python
+class EnrichmentExplanation(ExplanationArtifact): ...
 ```
 
 ## 10. TA Snapshot
@@ -151,6 +216,12 @@ class TASnapshot(TypedDict):
     liquidity_gate_passed: bool | None
     ta_score: float
     ta_summary: str
+```
+
+Companion explanation artifact:
+
+```python
+class TAExplanation(ExplanationArtifact): ...
 ```
 
 ## 11. Strategy Profile Ref
@@ -208,6 +279,18 @@ class TradeDecision(TypedDict):
     capped_amount_usd: float
     rationale_summary: str
     telegram_summary: str
+    analysis_thesis: str
+    ta_reasoning: str
+    risk_reasoning: str
+    sizing_reasoning: str
+    policy_expectation_summary: str
+    user_message_long: str
+```
+
+Companion explanation artifact:
+
+```python
+class DecisionExplanation(ExplanationArtifact): ...
 ```
 
 ## 14. Policy Gate Result
@@ -218,6 +301,34 @@ class PolicyGateResult(TypedDict):
     action: Literal["execute", "skip", "block"]
     failure_codes: list[str]
     gate_summary: str
+```
+
+Companion explanation artifact:
+
+```python
+class PolicyExplanation(ExplanationArtifact): ...
+```
+
+## 14A. Exit Decision
+
+```python
+class ExitDecision(TypedDict):
+    asset_lane: AssetLane
+    decision: Literal["hold", "exit_hard", "exit_trailing_arm", "exit_trailing_fire"]
+    decision_reason_code: str
+    confidence: float
+    rationale_summary: str
+    telegram_summary: str
+    trigger_reasoning: str
+    trailing_plan: str
+    risk_protection_summary: str
+    user_message_long: str
+```
+
+Companion explanation artifact:
+
+```python
+class ExitExplanation(ExplanationArtifact): ...
 ```
 
 ## 15. Execution Request
@@ -248,8 +359,20 @@ class ExecutionResult(TypedDict):
     to_amount: str | None
     price_impact_pct: float | None
     gas_used_usd: float | None
+    explorer_url: str | None
+    approval_explorer_url: str | None
+    execution_price: float | None
+    effective_price_impact_pct: float | None
+    route_summary: str | None
+    receipt_message_long: str | None
     error_code: str | None
     error_message: str | None
+```
+
+Companion explanation artifact:
+
+```python
+class ExecutionReceiptExplanation(ExplanationArtifact): ...
 ```
 
 ## 17. Position Record
@@ -283,6 +406,7 @@ class ScraperWebhookPayload(TypedDict):
     message_text: str
     message_timestamp: str
     message_url: str | None
+    media_blobs: list[dict]
     raw_payload: dict
 ```
 

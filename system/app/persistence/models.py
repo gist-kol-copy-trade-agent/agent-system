@@ -227,6 +227,7 @@ class TelegramNotification(Base):
     related_position_id: Mapped[str | None] = mapped_column(String(255), index=True)
     notification_type: Mapped[str] = mapped_column(String(64))
     message_text: Mapped[str] = mapped_column(Text)
+    explanation_json: Mapped[dict | None] = mapped_column(JSON)
     send_status: Mapped[str] = mapped_column(String(32))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

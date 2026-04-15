@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 
 from app.adapters.scraper.client import ScraperClient, ScraperRegistrationRequest
+from app.adapters.scraper.http_client import HTTPScraperClient
 from app.adapters.telegram.client import TelegramClient
 from app.agents.decision import DecisionAgent
 from app.agents.exit import ExitAgent
@@ -26,10 +28,10 @@ from app.persistence.repositories import (
     SQLAlchemyWorkflowRunRepository,
 )
 from app.persistence.session import build_session_factory, create_all
-from app.config.settings import ensure_openai_runtime_env
+from app.config.settings import ensure_openai_runtime_env, get_settings
 from app.services.exit_flow import ExitGraphService
 from app.services.follow_command import FollowCommandService
-from app.services.notifications import NotificationService, RecordingTelegramClient
+from app.services.notifications import NotificationService
 from app.services.position_monitor import PositionMonitorService
 from app.services.readiness import RuntimeReadinessService
 from app.services.signal_intake import SignalIntakeGraphService
@@ -48,25 +50,41 @@ from app.services.workflow_runtime import (
 )
 
 
-class NoopScraperClient(ScraperClient):
+class UnavailableScraperClient(ScraperClient):
     def request_channel_profile(self, request) -> dict:
         return {
-            "ok": True,
-            "profile_job_id": f"profile:{request.source_id}",
+            "ok": False,
+            "profile_job_id": None,
             "channel_name": request.channel_name,
-            "status": "profiling_pending",
+            "status": "scraper_unavailable",
+            "error_code": "SCRAPER_NOT_CONFIGURED",
+            "message": "Scraper base URL is not configured.",
         }
 
     def register_channel(self, request: ScraperRegistrationRequest) -> dict:
         return {
-            "ok": True,
-            "scraper_subscription_id": f"noop:{request.source_id}",
+            "ok": False,
+            "scraper_subscription_id": None,
             "channel_name": request.channel_name,
-            "status": "registered",
+            "status": "scraper_unavailable",
+            "error_code": "SCRAPER_NOT_CONFIGURED",
+            "message": "Scraper base URL is not configured.",
         }
 
     def unregister_channel(self, *, source_id: str, channel_name: str) -> dict:
-        return {"ok": True, "status": "unregistered", "source_id": source_id, "channel_name": channel_name}
+        return {
+            "ok": False,
+            "status": "scraper_unavailable",
+            "source_id": source_id,
+            "channel_name": channel_name,
+            "error_code": "SCRAPER_NOT_CONFIGURED",
+            "message": "Scraper base URL is not configured.",
+        }
+
+
+class UnconfiguredTelegramClient(TelegramClient):
+    def send_message(self, *, chat_id: str, text: str) -> None:
+        raise RuntimeError("Telegram bot client is not configured.")
 
 
 @dataclass
@@ -93,8 +111,28 @@ def build_application_runtime(
     telegram_client: TelegramClient | None = None,
 ) -> ApplicationRuntime:
     ensure_openai_runtime_env()
+    settings = get_settings()
     create_all()
     session_factory = build_session_factory()
+
+    resolved_scraper_client = scraper_client
+    if resolved_scraper_client is None and settings.scraper.base_url:
+        resolved_scraper_client = HTTPScraperClient(
+            base_url=settings.scraper.base_url,
+            timeout_seconds=settings.scraper.timeout_seconds,
+        )
+    if resolved_scraper_client is None:
+        resolved_scraper_client = UnavailableScraperClient()
+
+    resolved_telegram_client = telegram_client
+    if resolved_telegram_client is None:
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        if bot_token:
+            from app.telegram_bot import PythonTelegramBotClient
+
+            resolved_telegram_client = PythonTelegramBotClient(bot_token)
+        else:
+            resolved_telegram_client = UnconfiguredTelegramClient()
 
     strategy_repo = SQLAlchemyStrategyProfileRepository(session_factory)
     source_repo = SQLAlchemyFollowedSourceRepository(session_factory)
@@ -109,14 +147,14 @@ def build_application_runtime(
     strategy_profile_session_repo = SQLAlchemyStrategyProfileSessionRepository(session_factory)
 
     strategy_profiles = StrategyProfileService(strategy_repo)
-    source_registry = SourceRegistryService(source_repo, scraper_client or NoopScraperClient())
+    source_registry = SourceRegistryService(source_repo, resolved_scraper_client)
     notification_service = NotificationService(
-        telegram_client=telegram_client or RecordingTelegramClient(),
+        telegram_client=resolved_telegram_client,
         notification_repository=notification_repo,
     )
     follow_command_service = FollowCommandService(
         repository=source_repo,
-        scraper_client=scraper_client or NoopScraperClient(),
+        scraper_client=resolved_scraper_client,
         source_registry=source_registry,
         profiling_agent=FollowProfilingAgent(),
         notification_service=notification_service,
@@ -181,8 +219,12 @@ def build_application_runtime(
         follow_command_service=follow_command_service,
         trade_style_setup_service=trade_style_setup_service,
     )
-    webhook_intake = WebhookIntakeService(message_repo)
-    readiness = RuntimeReadinessService()
+    webhook_intake = WebhookIntakeService(message_repo, signature_ttl_seconds=300)
+    readiness = RuntimeReadinessService(
+        session_factory=session_factory,
+        scraper_client=resolved_scraper_client,
+        telegram_client=resolved_telegram_client,
+    )
 
     return ApplicationRuntime(
         strategy_profiles=strategy_profiles,

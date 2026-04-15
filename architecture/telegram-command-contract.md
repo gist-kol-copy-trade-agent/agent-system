@@ -245,6 +245,9 @@ Phase 2 response after profiling:
 - extracted call count
 - retrospective quality summary
 - suggested conviction
+- biggest observed winner
+- major-vs-regular asset bias
+- granular pattern breakdown
 - follow confirmation prompt
 
 Phase 3 response after user confirms:
