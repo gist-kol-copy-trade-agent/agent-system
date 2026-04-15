@@ -42,6 +42,8 @@ make test-system
 make test-scraper
 ```
 
+`system/Dockerfile` installs the latest stable `onchainos` CLI during image build via the official OKX installer script, so Docker-based runtime does not depend on a host-installed binary.
+
 ## 2. Start Core Stack
 
 ```bash
@@ -148,3 +150,4 @@ In this mode:
 
 - if `OKX_AGENT_SCRAPER__BASE_URL` is unset, the bot uses `UnavailableScraperClient`
 - if `OKX_AGENT_SCRAPER__BASE_URL` is set, the standalone bot can still call an external scraper service
+- the bot image already contains the `onchainos` CLI; no extra host install is required for containerized runtime

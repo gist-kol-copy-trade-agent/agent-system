@@ -13,6 +13,7 @@ The code here is runnable for supervised operation and integration verification,
 - LangGraph orchestration is implemented for signal intake, exit evaluation, and command flows.
 - execution and policy gates are deterministic after the agent decision boundary.
 - default checkpoint durability uses the Postgres LangGraph checkpointer when installed with runtime dependencies.
+- the container image installs the `onchainos` CLI at build time via the official OKX installer script, so runtime tool calls do not depend on a host-level binary.
 
 Current runtime shape:
 
@@ -45,3 +46,9 @@ Operational docs:
 - Container build: `Dockerfile`
 - Standalone runtime stack: `docker-compose.standalone.yml`
 - Reproducible local dev/test flow: use the root `Makefile` with a dedicated `system` virtualenv
+
+Container note:
+
+- `Dockerfile` installs the latest stable `onchainos` CLI using the official installer script from `okx/onchainos-skills`
+- this keeps the container self-contained for runtime execution
+- if stricter build reproducibility is needed later, pinning a specific CLI release would be the next step
