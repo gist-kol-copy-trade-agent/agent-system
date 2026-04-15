@@ -76,7 +76,7 @@ Implement config loading based on:
 Config should support:
 
 - local development
-- demo/staging
+- staging
 - production-like settings later
 
 ## 4. Persistence Foundation

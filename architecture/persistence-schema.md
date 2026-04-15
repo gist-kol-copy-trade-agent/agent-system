@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines the recommended PostgreSQL schema shape for the PoC/V1 bot.
+This document defines the recommended PostgreSQL schema shape for the v1 bot.
 
 It is not a migration file. It is the implementation-facing persistence contract.
 

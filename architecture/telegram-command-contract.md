@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines the Telegram command surface for the PoC/V1 bot.
+This document defines the Telegram command surface for the v1 bot.
 
 It specifies:
 

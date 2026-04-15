@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines the runtime configuration surface for the PoC/V1 bot.
+This document defines the runtime configuration surface for the v1 bot.
 
 The goal is to keep:
 
@@ -114,7 +114,7 @@ Accepted values for `notifications.mode`:
 
 - `compact`
 - `standard`
-- `demo_longform`
+- `longform`
 
 ## 8. Scraper Integration
 
@@ -142,7 +142,7 @@ wallet:
   allow_cross_chain_funding: false
 ```
 
-PoC/V1 note:
+V1 note:
 
 - `major_assets` is currently limited to `BTC`, `ETH`, and `SOL`
 - the config structure is intentionally extensible so future versions can add assets such as `BNB` and `TRX` without changing the orchestration model

@@ -1,6 +1,6 @@
 # Scraper Service
 
-MVP Telegram scraper service for the OKX agent architecture.
+Telegram scraper service for the OKX agent architecture.
 
 Responsibilities:
 
@@ -12,8 +12,8 @@ Responsibilities:
 Runtime shape:
 
 - FastAPI HTTP server,
-- SQLite by default for MVP,
-- SQLite by default for MVP, persisted in Docker at `/app/data/scraper.db`,
+- SQLite by default,
+- SQLite persisted in Docker at `/app/data/scraper.db`,
 - background loops for live polling and historical fetch jobs,
 - Telethon gateway for Telegram reads.
 

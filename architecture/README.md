@@ -2,7 +2,7 @@
 
 ## Scope
 
-This folder defines the internal agent architecture for the PoC/V1 product:
+This folder defines the internal agent architecture for the v1 product:
 
 - built on LangChain agents,
 - running on LangGraph runtime,
@@ -16,7 +16,7 @@ This folder defines the internal agent architecture for the PoC/V1 product:
 - [agent-boundary-review.md](agent-boundary-review.md): review of the current agent split against LangChain/LangGraph guidance, including which agents should stay separate and which may merge later.
 - [agent-skill-runtime.md](agent-skill-runtime.md): runtime path showing when each agent loads OKX skills, which tools it calls, and where bounded `onchainos` execution happens.
 - [runtime-graph-charts.md](runtime-graph-charts.md): two Mermaid charts for the signal-intake/follow-trade graph and the exit graph, including model nodes, tools, and OKX skills loaded at each step.
-- [explainability-layer.md](explainability-layer.md): architecture note for structured reasoning artifacts, Telegram rendering, and demo-quality explanations without weakening deterministic safety boundaries.
+- [explainability-layer.md](explainability-layer.md): architecture note for structured reasoning artifacts, Telegram rendering, and clear user-facing explanations without weakening deterministic safety boundaries.
 - [action-flows.md](action-flows.md): per-action interaction flow showing when the model is called, which tools are exposed, and which steps stay deterministic.
 - [domain-schemas.md](domain-schemas.md): normalized internal domain objects for parsed signals, resolutions, enrichment, decisions, execution, and graph state.
 - [policy-spec.md](policy-spec.md): deterministic skip/block/execute rules, lane behavior, sizing logic, and fallback exit policy.

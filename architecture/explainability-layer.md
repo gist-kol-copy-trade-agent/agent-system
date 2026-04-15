@@ -8,7 +8,7 @@ This document defines the explainability layer that sits between:
 - Telegram-facing user communication,
 - and audit-ready persisted explanation artifacts.
 
-The goal is to let the system explain itself in a demo-quality way without weakening the core safety model.
+The goal is to let the system explain itself clearly in Telegram without weakening the core safety model.
 
 This layer must not become:
 
@@ -221,7 +221,7 @@ Use a deterministic renderer by default.
 
 Why:
 
-- predictable demo output,
+- predictable user-facing output,
 - stable formatting,
 - easier testing,
 - no extra model latency,
@@ -235,9 +235,9 @@ Recommended rendering model:
 This allows:
 
 - concise operation in normal mode,
-- richer narration in demo mode.
+- richer narration when the operator wants more detail.
 
-## Demo Mode
+## Rendering Modes
 
 Introduce a configuration-controlled explainability mode.
 
@@ -245,13 +245,13 @@ Suggested modes:
 
 - `compact`
 - `standard`
-- `demo_longform`
+- `longform`
 
 Behavior:
 
 - `compact`: short progress cards only
 - `standard`: short cards + moderate summaries
-- `demo_longform`: short cards + long-form analyst explanations + richer receipts
+- `longform`: short cards + long-form analyst explanations + richer receipts
 
 The mode should affect rendering only.
 It should not change policy or execution behavior.
@@ -314,14 +314,14 @@ Without an explicit explainability layer:
 
 - every stage compresses into one short summary string,
 - Telegram output quality depends on hard-coded templates,
-- richer demo narration requires manual scripting,
+- richer long-form Telegram narration requires additional manual formatting effort,
 - future replay / audit views stay too weak.
 
 With the explainability layer:
 
 - reasoning becomes part of the system design,
 - explanation quality can improve without touching safety boundaries,
-- demo readiness and auditability improve together.
+- user-facing clarity and auditability improve together.
 
 ## Acceptance Standard
 
@@ -331,7 +331,7 @@ This layer is correctly implemented only if:
 - deterministic policy and execution boundaries remain unchanged,
 - explanation artifacts are structured and persistable,
 - rendering is testable and mode-driven,
-- the demo can use real runtime outputs with little or no manual embellishment.
+- real runtime outputs are clear enough to follow without extra operator narration.
 
 ## References
 
@@ -339,5 +339,4 @@ This layer is correctly implemented only if:
 - [runtime-graph-charts.md](runtime-graph-charts.md)
 - [domain-schemas.md](domain-schemas.md)
 - [state-and-persistence.md](state-and-persistence.md)
-- [../implementation-plan/phase-5-explainability-and-demo-readiness.md](../implementation-plan/phase-5-explainability-and-demo-readiness.md)
-- [../demo-video-plan.md](../demo-video-plan.md)
+- [../implementation-plan/phase-5-explainability-and-telegram-ux-quality.md](../implementation-plan/phase-5-explainability-and-telegram-ux-quality.md)

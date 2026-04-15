@@ -593,9 +593,9 @@ If the integration is expected to evolve, use versioned paths such as:
 /api/v1/webhooks/scraper/messages
 ```
 
-## 13. Minimal PoC Requirement
+## 13. Minimal V1 Requirement
 
-For the PoC, the integration can stay simple as long as it includes:
+For v1, the integration can stay simple as long as it includes:
 
 - a shared-secret signature check,
 - event idempotency,

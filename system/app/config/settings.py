@@ -61,7 +61,7 @@ class ScraperSettings(BaseModel):
 
 
 class NotificationSettings(BaseModel):
-    mode: Literal["compact", "standard", "demo_longform"] = "standard"
+    mode: Literal["compact", "standard", "longform"] = "standard"
 
 
 class AppSettings(BaseSettings):

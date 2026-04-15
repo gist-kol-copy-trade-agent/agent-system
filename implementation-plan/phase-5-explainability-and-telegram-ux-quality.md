@@ -1,4 +1,4 @@
-# Phase 5: Explainability and Demo Readiness
+# Phase 5: Explainability and Telegram UX Quality
 
 ## Status
 
@@ -9,7 +9,7 @@ Implemented scope:
 - explanation artifacts promoted to first-class graph state
 - `DecisionAgent`, `EnrichmentAgent`, `FollowProfilingAgent`, `ExitAgent`, and `SwapExecutionAgent` extended with richer explanation / receipt fields
 - deterministic notification renderer switched from hard-coded stage templates to structured explanation-aware rendering
-- notification rendering mode added: `compact`, `standard`, `demo_longform`
+- notification rendering mode added: `compact`, `standard`, `longform`
 - explanation payloads persisted into `telegram_notifications`
 - workflow-level explainability snapshots persisted into `workflow_runs.run_metadata`
 
@@ -22,10 +22,10 @@ Remaining intentional MVP limits:
 
 ## Goal
 
-Close the gap between the current runtime and the scripted demo expectations by making the system able to surface richer reasoning, analysis, and execution receipts to the user without weakening deterministic safety boundaries.
+Improve Telegram-facing clarity and interaction quality by making the system surface richer reasoning, analysis, and execution receipts to the user without weakening deterministic safety boundaries.
 
 This phase is not about adding new trading capabilities.
-It is about making the existing capabilities legible and demo-quality.
+It is about making the existing capabilities legible, trustworthy, and smooth to follow in Telegram.
 
 ## Detailed Plan
 
@@ -87,7 +87,7 @@ Add fields such as:
 - `overlay_summary_long`
 - `evidence_points`
 
-This should support demo-quality context messages such as:
+This should support richer Telegram context messages such as:
 
 - why the market is trending,
 - why liquidity and quote quality are acceptable,
@@ -96,7 +96,7 @@ This should support demo-quality context messages such as:
 
 ## 4. Expand Follow-Profiling Output
 
-Extend the follow-profiling schema and rendering to better match the retrospective demo story.
+Extend the follow-profiling schema and rendering to better explain retrospective channel quality in Telegram.
 
 Add fields such as:
 
@@ -124,7 +124,7 @@ Add fields such as:
 - `risk_protection_summary`
 - `user_message_long`
 
-This should support demo-quality exit narration such as:
+This should support richer exit narration such as:
 
 - why the bot is holding,
 - why trailing was armed,
@@ -144,7 +144,7 @@ Add fields such as:
 - `route_summary`
 - `receipt_message_long`
 
-The runtime should be able to render a demo-quality execution receipt with:
+The runtime should be able to render a richer execution receipt with:
 
 - tx hashes,
 - explorer links,
@@ -167,7 +167,7 @@ The renderer layer should stay deterministic for MVP stability.
 
 ## 8. Add Optional Long-Form Narrative Messages Between Core Steps
 
-Support a richer demo mode without changing the execution boundary.
+Support a richer long-form notification mode without changing the execution boundary.
 
 For selected stages:
 
@@ -183,13 +183,13 @@ allow the system to emit:
 - short status card,
 - optional long-form analyst-style reasoning block.
 
-This should be configuration-driven so demo mode can be enabled without making normal operation excessively verbose.
+This should be configuration-driven so operators can choose between concise and more explanatory Telegram output without making normal operation excessively verbose.
 
 ## 9. Persist Explanation Artifacts
 
 Persist explainability payloads with workflow and notification records so the system can:
 
-- replay demo flows,
+- replay user-visible workflow progress,
 - inspect why the bot acted,
 - debug reasoning quality after the run,
 - support richer `/history` or future audit views.
@@ -215,12 +215,13 @@ This layer should sit after agent reasoning and before Telegram delivery.
 - the `/follow` retrospective result can show more than aggregate metrics, including strongest pattern highlights
 - entry execution receipts can include explorer links and richer fill details
 - exit decision output can explain trailing / hard-exit reasoning in user-facing terms
+- Telegram progress updates remain readable and consistent across compact and long-form modes
 - graph safety boundaries remain unchanged:
   - deterministic policy gate still decides final permission
   - execution still occurs only after policy approval
   - explainability fields do not change trading state on their own
 - explanation artifacts are persisted in a structured way suitable for replay and audit
-- the scripted demo in `demo-video-plan.md` can be produced with minimal manual embellishment
+- Telegram output quality is high enough that users can follow the system's reasoning without manual operator interpretation
 
 ## Implementation Notes
 
@@ -233,12 +234,11 @@ This phase was implemented incrementally in the runtime with verification after 
 5. richer `ExitAgent` output plus `exit_decision_explanation`
 6. richer swap execution receipts for buy and sell flows
 7. structured notification renderer consuming explanation artifacts
-8. mode-driven long-form notification rendering
+8. mode-driven long-form notification rendering for smoother Telegram UX
 9. persistence of explanation payloads into notifications and workflow metadata
 
 ## References
 
-- [../demo-video-plan.md](../demo-video-plan.md)
 - [../architecture/action-flows.md](../architecture/action-flows.md)
 - [../architecture/runtime-graph-charts.md](../architecture/runtime-graph-charts.md)
 - [../architecture/core-agent-architecture.md](../architecture/core-agent-architecture.md)

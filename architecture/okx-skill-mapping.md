@@ -10,7 +10,7 @@ This document maps each bot action in the product to the correct `okx-onchainos-
 - expected outputs that feed the next step,
 - guardrails on when not to use a skill.
 
-This file is written for implementation of the orchestration layer in the PoC/V1 product.
+This file is written for implementation of the orchestration layer in the v1 product.
 
 ## Product Constraints
 
@@ -355,7 +355,7 @@ onchainos token advanced-info --address <token_ca>
 - TA itself is computed in the app, not in the OKX skill.
 - For major assets, use a reduced enrichment set centered on price, K-line, quote, and X Layer readiness.
 - For regular tokens, keep the richer enrichment path.
-- Keep the initial PoC focused on a narrow set of metrics: price deviation, recent momentum, liquidity, and volume.
+- Keep the initial v1 scope focused on a narrow set of metrics: price deviation, recent momentum, liquidity, and volume.
 
 ## 7. Smart Money / KOL Overlay
 
@@ -725,7 +725,7 @@ onchainos gateway orders --address <wallet_addr> --chain <chain> [--order-id <or
 
 ### Notes
 
-- This is not the normal path for PoC buy/sell trading.
+- This is not the normal path for v1 buy/sell trading.
 - Use mainly for advanced integrations or externally signed flows.
 
 ## 15. Audit Log Access
@@ -861,9 +861,9 @@ These actions must be implemented in the application layer:
 - Telegram message formatting and bot UX
 - local persistence and bot audit trail
 
-## Recommended Minimal Integration Set for PoC
+## Recommended Minimal Integration Set for V1
 
-If the PoC should stay narrow, the minimum useful skill set is:
+If v1 should stay narrow, the minimum useful skill set is:
 
 - `okx-agentic-wallet`
 - `okx-dex-market`

@@ -264,12 +264,12 @@ class NotificationService:
             lines.extend(["", "Facts"] + fact_lines)
 
         evidence_points = [str(point) for point in (explanation.get("evidence_points") or []) if point]
-        if mode in {"standard", "demo_longform"} and evidence_points:
+        if mode in {"standard", "longform"} and evidence_points:
             max_points = 2 if mode == "standard" else 4
             lines.extend(["", "Reasoning"] + [f"- {point}" for point in evidence_points[:max_points]])
 
         long_form_message = explanation.get("long_form_message")
-        if mode == "demo_longform" and long_form_message:
+        if mode == "longform" and long_form_message:
             lines.extend(["", "Analyst Note", str(long_form_message)])
 
         next_step = next_steps.get(stage)

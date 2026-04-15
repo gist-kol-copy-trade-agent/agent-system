@@ -106,7 +106,7 @@ class UserStrategyProfile(TypedDict):
 
 ## 6. Recommended Preset Defaults
 
-These are starting recommendations for the PoC. They are product defaults, not hard protocol rules.
+These are starting recommendations for v1. They are product defaults, not hard protocol rules.
 
 ## 6.1 Safe
 

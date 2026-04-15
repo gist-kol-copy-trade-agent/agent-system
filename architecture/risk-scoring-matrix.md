@@ -11,7 +11,7 @@ It translates risk inputs from:
 
 into deterministic policy outcomes.
 
-For the PoC, this matrix should be treated as the default implementation baseline.
+For v1, this matrix should be treated as the default implementation baseline.
 
 ## 2. Scope
 
@@ -189,7 +189,7 @@ token_risk_score = 1.0
 - if any `block` rule hits -> score forced to `0`
 - clamp final numeric score to `[0, 1]`
 
-## 11. Recommended PoC Thresholds
+## 11. Recommended V1 Thresholds
 
 ### Block
 

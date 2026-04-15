@@ -127,7 +127,7 @@ Behavior:
 
 - Root `docker-compose.yml` is the primary local orchestration file.
 - `system/docker-compose.standalone.yml` can still be used if you want to run only the bot service stack without the scraper service.
-- The scraper is MVP-only:
+- The scraper currently stays intentionally simple:
   - live message ingestion uses polling, not a scalable worker fleet,
   - historical fetch jobs run in-process,
   - retry behavior is minimal and not yet a dedicated retry queue.
@@ -146,5 +146,5 @@ docker compose -f docker-compose.standalone.yml --profile monitor up -d app-exit
 
 In this mode:
 
-- if `OKX_AGENT_SCRAPER__BASE_URL` is unset, the bot uses `NoopScraperClient`
+- if `OKX_AGENT_SCRAPER__BASE_URL` is unset, the bot uses `UnavailableScraperClient`
 - if `OKX_AGENT_SCRAPER__BASE_URL` is set, the standalone bot can still call an external scraper service

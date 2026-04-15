@@ -1,6 +1,6 @@
 # System
 
-MVP runtime for the implementation described across `../architecture/` and `../implementation-plan/`.
+Runtime for the implementation described across `../architecture/` and `../implementation-plan/`.
 
 This directory contains:
 
@@ -8,7 +8,7 @@ This directory contains:
 - migration skeleton in `migrations/`
 - test suite in `tests/`
 
-The code here is runnable for demo and supervised MVP validation, but it still has explicit boundaries:
+The code here is runnable for supervised operation and integration verification, but it still has explicit boundaries:
 
 - LangGraph orchestration is implemented for signal intake, exit evaluation, and command flows.
 - execution and policy gates are deterministic after the agent decision boundary.

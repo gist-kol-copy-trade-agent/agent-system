@@ -60,7 +60,7 @@ Important note:
 - the repo does **not** hardcode or publish a shared hot-wallet address
 - after the first successful wallet login, the live deployment address can be inspected via `/status`
 
-This choice is deliberate: the bot is designed to trade from the operator's own Agentic Wallet session, not from a common demo treasury.
+This choice is deliberate: the bot is designed to trade from the operator's own Agentic Wallet session, not from a shared project treasury.
 
 ## Architecture Overview
 

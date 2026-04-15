@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines executable policy behavior for the PoC/V1 bot.
+This document defines executable policy behavior for the v1 bot.
 
 It converts product intent into deterministic rules for:
 
@@ -32,7 +32,7 @@ Everything else is `regular`.
 
 This classification is deterministic and happens before enrichment policy selection.
 
-PoC/V1 note:
+V1 note:
 
 - the major-asset allowlist is intentionally fixed to these three assets only
 - this is a temporary product scope choice, not a permanent architectural limitation
@@ -121,7 +121,7 @@ If risk scan infrastructure fails:
 
 - `skip: TOKEN_RISK_UNAVAILABLE`
 
-PoC choice:
+V1 choice:
 
 - fail closed for regular-token risk-scan failures
 
@@ -245,7 +245,7 @@ If final capped notional is below the product minimum executable trade size:
 
 - `skip: TRADE_SIZE_TOO_SMALL`
 
-PoC recommendation:
+V1 recommendation:
 
 - define product minimum per chain in config
 
@@ -320,7 +320,7 @@ Use `skip` for:
 
 ## 15. Recommended Internal Threshold Placeholders
 
-PoC placeholders to be finalized in config:
+V1 placeholders to be finalized in config:
 
 - `MIN_TA_SCORE_MAJOR = 0.5`
 - `MIN_TA_SCORE_REGULAR = 0.6`

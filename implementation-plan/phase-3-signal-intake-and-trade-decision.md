@@ -4,10 +4,10 @@
 
 Implement the core trading path from inbound scraped Telegram message to policy-gated buy execution.
 
-This is the first phase that produces the real demo value:
+This is the first phase that produces the first end-to-end trading value:
 
-- one major-asset demo case
-- one regular-token demo case
+- one major-asset path
+- one regular-token path
 
 ## Detailed Plan
 
@@ -65,7 +65,7 @@ Implement application-owned TA tools:
 - liquidity gate handoff
 - composite TA score
 
-Keep the TA system intentionally narrow for PoC.
+Keep the TA system intentionally narrow for v1.
 
 ## 5. Enrichment Agent
 
@@ -140,9 +140,9 @@ Implementation order:
 2. refactor buy execution path to use it
 3. keep persistence and position creation in deterministic nodes
 
-## 9. Demo Support
+## 9. Operational Coverage
 
-Ensure the system can demonstrate:
+Ensure the system can support:
 
 - a major-asset call routed to X Layer
 - a regular-token call following the full risk pipeline

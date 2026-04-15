@@ -42,12 +42,12 @@ def test_progress_notification_renders_structured_explanation() -> None:
     assert "Momentum remains positive" in record.message_text
 
 
-def test_progress_notification_demo_mode_renders_analyst_note() -> None:
+def test_progress_notification_longform_mode_renders_analyst_note() -> None:
     repo = InMemoryTelegramNotificationRepository()
     service = NotificationService(
         telegram_client=RecordingTelegramClient(),
         notification_repository=repo,
-        mode="demo_longform",
+        mode="longform",
     )
 
     service.send_progress_notification(

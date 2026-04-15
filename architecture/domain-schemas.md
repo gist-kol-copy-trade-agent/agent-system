@@ -31,7 +31,7 @@ Explanation artifacts are first-class structured outputs that summarize why the 
 They are:
 
 - renderer-friendly,
-- persistable for audit or demo replay,
+- persistable for audit or workflow replay,
 - not execution authority,
 - not raw chain-of-thought.
 

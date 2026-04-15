@@ -2,12 +2,12 @@
 
 ## Goal
 
-Close the loop for the PoC by implementing:
+Close the first full trading loop by implementing:
 
 - active-position monitoring,
 - cron-driven exit evaluation and execution,
 - reliability hardening,
-- observability and demo stability.
+- observability and runtime stability.
 
 ## Detailed Plan
 
@@ -123,11 +123,11 @@ Implement:
   - executions
   - exits
 
-## 8. Demo Stabilization
+## 8. Operational Stabilization
 
-Implement operational support for demo use:
+Implement operational support for stable monitored operation:
 
-- fixture or replay mode for demo messages if needed
+- fixture or replay mode for controlled message reprocessing if needed
 - clear monitoring dashboards or logs
 - deterministic explanation messages for skipped/blocked/executed trades and exits
 
@@ -146,7 +146,7 @@ Implement operational support for demo use:
   - why a trade was skipped
   - why a trade was blocked
   - why an exit triggered
-- the full PoC demo can show:
+- the full runtime can support:
   - source registration
   - incoming webhook
   - major lane trade
