@@ -80,10 +80,10 @@ flowchart LR
     TG["Telegram public channels"] --> SC["Telethon scraper service"]
     SC --> WH["Webhook intake"]
     WH --> SIG["Signal Intake Graph"]
-    SIG --> PARSE["KOL Call Parsing Agent"]
-    SIG --> ENRICH["On-chain Data Enrichment Agent"]
-    SIG --> DECIDE["Decision Agent"]
-    SIG --> EXEC["Execution Agent"]
+    SIG --> PARSE["KOL Call Parsing Sub-Agent"]
+    SIG --> ENRICH["On-chain Data Enrichment Sub-Agent"]
+    SIG --> DECIDE["Decision Sub-Agent"]
+    SIG --> EXEC["Execution Sub-Agent"]
     EXEC --> XL["X Layer / supported chain swap execution"]
     XL --> POS["Portfolio Tracker / Exit Graph"]
     POS --> TGUSER["Telegram user updates"]
@@ -104,12 +104,12 @@ The main sub-agent roles are shown below:
 
 ```mermaid
 flowchart LR
-    SCRAPER["Telegram Scraper"] -->|"new KOL messages"| PARSER["KOL Call Parsing Agent"]
-    PARSER -->|"Signal from KOL message"| DECISION["Decision Agent"]
-    ENRICH["On-chain Data Enrichment Agent"] -->|"on-chain token & market data"| DECISION
+    SCRAPER["Telegram Scraper"] -->|"new KOL messages"| PARSER["KOL Call Parsing Sub-Agent"]
+    PARSER -->|"Signal from KOL message"| DECISION["Decision Sub-Agent"]
+    ENRICH["On-chain Data Enrichment Sub-Agent"] -->|"on-chain token & market data"| DECISION
     TA["Technical Analysis Tools"] -->|"Technical analysis"| DECISION
-    PORTFOLIO["Portfolio Tracker Agent"] -->|"Portfolio Data"| DECISION
-    DECISION -->|"decision"| EXECUTION["Execution Agent"]
+    PORTFOLIO["Portfolio Tracker Sub-Agent"] -->|"Portfolio Data"| DECISION
+    DECISION -->|"decision"| EXECUTION["Execution Sub-Agent"]
 ```
 
 ### 1. KOL Call Parsing Sub-Agent
@@ -201,23 +201,23 @@ This satisfies the requirement to use core modules from the Onchain OS skills su
 1. Scraper receives a new Telegram message from a followed public channel.
 2. Scraper sends a signed webhook to the main app.
 3. Signal Intake Graph starts in LangGraph.
-4. Parsing Agent interprets the KOL message and extracts the trade candidate.
+4. Parsing Sub-Agent interprets the KOL message and extracts the trade candidate.
 5. Asset resolution and lane classification happen.
-6. Enrichment Agent loads wallet context, market context, token data, and risk context.
+6. Enrichment Sub-Agent loads wallet context, market context, token data, and risk context.
 7. Deterministic TA tools compute the TA snapshot.
-8. Decision Agent reasons over the prepared state.
+8. Decision Sub-Agent reasons over the prepared state.
 9. Deterministic policy gate checks slippage, active positions, price deviation, liquidity, and wallet readiness.
-10. Execution Agent performs the approved same-chain buy.
+10. Execution Sub-Agent performs the approved same-chain buy.
 11. The system persists workflow state, execution results, and sends reasoning updates back to Telegram.
 
 ### Exit Pipeline
 
 1. A cron-driven monitor selects active positions.
-2. Portfolio Tracker Agent refreshes price, wallet PnL, and position state.
+2. Portfolio Tracker Sub-Agent refreshes price, wallet PnL, and position state.
 3. Deterministic exit TA computes hard-stop, take-profit, trailing-arm, trailing-fire, and max-hold triggers.
-4. Exit Agent decides whether to hold or exit.
+4. Exit Sub-Agent decides whether to hold or exit.
 5. Deterministic exit policy maps the decision into `hold`, `persist_trailing`, `block`, or `execute`.
-6. If approved, the Execution Agent submits the sell swap.
+6. If approved, the Execution Sub-Agent submits the sell swap.
 7. The system closes the position and reports the result in Telegram.
 
 ### Command Surface

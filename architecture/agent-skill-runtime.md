@@ -1,8 +1,8 @@
-# Agent Skill Runtime
+# Sub-Agent Skill Runtime
 
 ## Purpose
 
-This document shows how the model-facing agents load OKX skills at runtime, when they do it, and how those skill prompts connect to `onchainos` command execution and structured outputs.
+This document shows how the model-facing sub-agents load OKX skills at runtime, when they do it, and how those skill prompts connect to `onchainos` command execution and structured outputs.
 
 The important rule is:
 
@@ -34,7 +34,7 @@ flowchart LR
     D --> P
 ```
 
-## Parsing Agent
+## Parsing Sub-Agent
 
 When to load skill:
 
@@ -73,7 +73,7 @@ Structured output produced:
 - resolved symbol / contract / chain,
 - optional token name and decimals.
 
-## Enrichment Agent
+## Enrichment Sub-Agent
 
 When to load skill:
 
@@ -123,7 +123,7 @@ Structured output produced:
 - `risk_snapshot`
 - optional `signal_overlay`
 
-## Decision Agent
+## Decision Sub-Agent
 
 When to load skill:
 
@@ -155,7 +155,7 @@ flowchart TD
     J --> K[Return execute or skip or block]
 ```
 
-## Wallet Agent
+## Wallet Sub-Agent
 
 When to load skill:
 
@@ -185,7 +185,7 @@ flowchart TD
     G --> H
 ```
 
-## Exit Agent
+## Exit Sub-Agent
 
 When to load skill:
 
@@ -215,7 +215,7 @@ flowchart TD
     H --> I[Return hold or exit_hard or exit_trailing_arm or exit_trailing_fire]
 ```
 
-## Swap Execution Agent
+## Swap Execution Sub-Agent
 
 When to load skill:
 
@@ -250,12 +250,12 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Parsing Agent] -->|may load skill| B[OnchainOS Read Tools]
-    C[Enrichment Agent] -->|may load skill| B
-    D[Wallet Command Agent] -->|may load skill| B
-    E[Decision Agent] -->|no skill loading| F[Pure reasoning only]
-    G[Exit Agent] -->|optional skill guidance, no execution| H[Read-only normalized tools]
-    I[Swap Execution Agent] -->|must load okx-dex-swap| J[Mutating swap tool]
+    A[Parsing Sub-Agent] -->|may load skill| B[OnchainOS Read Tools]
+    C[Enrichment Sub-Agent] -->|may load skill| B
+    D[Wallet Sub-Agent] -->|may load skill| B
+    E[Decision Sub-Agent] -->|no skill loading| F[Pure reasoning only]
+    G[Exit Sub-Agent] -->|optional skill guidance, no execution| H[Read-only normalized tools]
+    I[Swap Execution Sub-Agent] -->|must load okx-dex-swap| J[Mutating swap tool]
     J --> K[Deterministic persistence outside agent]
 ```
 

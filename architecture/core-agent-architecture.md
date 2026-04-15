@@ -50,9 +50,9 @@ The product also has two execution lanes:
 ```text
 Telegram/Webhook
   -> Signal Intake Graph
-      -> Parsing Agent
+      -> Parsing Sub-Agent
       -> Deterministic Resolver + Enrichment Nodes
-      -> Decision Agent
+      -> Decision Sub-Agent
       -> Deterministic Policy Gate
       -> Execution Node
       -> Persistence + Notification
@@ -60,7 +60,7 @@ Telegram/Webhook
 Position Monitor Scheduler
   -> Exit Evaluation Graph
       -> Market Refresh Nodes
-      -> Exit Decision Agent
+      -> Exit Decision Sub-Agent
       -> Deterministic Exit Gate
       -> Execution Node
       -> Persistence + Notification
@@ -74,7 +74,12 @@ User Command Router
 
 Do not use one monolithic agent for all responsibilities.
 
-Use bounded sub-agent roles:
+Use bounded sub-agent roles.
+
+Code note:
+
+- runtime class names still use identifiers such as `WalletAgent` and `DecisionAgent`
+- in product and architecture language, these should be understood as bounded sub-agents inside one shared execution system
 
 ### 4.1 Parsing Sub-Agent
 Purpose:
@@ -125,7 +130,10 @@ That remains outside the agent in deterministic policy-gate nodes.
 
 ## 5. Why Not a Single Always-On General Agent
 
-A single unrestricted agent would create avoidable failure modes:
+A single unrestricted agent would create avoidable failure modes.
+Likewise, multiple independently deployed on-chain agents would create unnecessary identity fragmentation for this product.
+
+This design instead uses one wallet identity with several bounded sub-agents coordinating around it:
 
 - too many tools in context,
 - higher risk of wrong tool selection,

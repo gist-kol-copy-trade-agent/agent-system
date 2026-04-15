@@ -22,9 +22,9 @@ Use LangChain for the reusable AI building blocks that almost every intelligent 
 
 In this project, LangChain is responsible for the bounded reasoning units:
 
-- Parsing Agent
-- Decision Agent
-- Exit Agent
+- Parsing Sub-Agent
+- Decision Sub-Agent
+- Exit Sub-Agent
 
 LangChain should not be treated as the full workflow engine for the trading system.
 
