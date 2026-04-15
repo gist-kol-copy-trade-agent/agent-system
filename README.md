@@ -278,8 +278,8 @@ Useful references:
 
 ## Team
 
-- `sniperman`
-- `nvq`
+- `aa-sniperman`
+- `nvq2309`
 
 ## Public Repository
 
