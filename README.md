@@ -194,6 +194,126 @@ Examples of core OnchainOS-backed capabilities used by the bot:
 
 This satisfies the requirement to use core modules from the Onchain OS skills surface.
 
+## How the Bot Decides What to Follow
+
+The system makes two separate decisions:
+
+1. **Should this KOL channel be followed?**
+2. **Should this specific call be followed with real execution?**
+
+A channel may be worth following overall, while an individual call can still be skipped or blocked.
+
+### KOL Follow Decision
+
+When a user runs `/follow`, the bot first profiles the channel before registering live monitoring.
+It requests historical messages, extracts past trade calls, and scores the source using:
+
+- extracted call count
+- evaluated call count
+- 1-day win rate
+- median and average 1-day return after calls
+- biggest historical winner
+- major-asset bias vs regular-token bias
+- recurring pattern breakdown from the source's historical calls
+
+This answers a simple question:
+is the channel consistently useful enough to deserve entry into the live trading pipeline?
+
+### Trade Call Follow Decision
+
+Even after a source is followed, each incoming call still goes through a second filter before any money moves.
+The bot evaluates:
+
+- parsed signal quality from the Telegram message
+- token identity confidence
+- chain compatibility
+- wallet readiness and available balance
+- market price and K-line context
+- deterministic TA snapshot
+- liquidity and quote quality
+- regular-token security scan and advanced token info when applicable
+- price deviation from the KOL reference entry when available
+- global user strategy profile and hard policy limits
+
+This means the system is not a blind copy-trader.
+It is a selective execution filter designed to catch good calls early while rejecting weak, unclear, or unsafe ones.
+
+## Risk Control and User Protection
+
+The product is designed around one operating principle:
+**do not miss high-quality calls, but do not forward low-quality calls into execution just because they arrived first.**
+
+### Major vs Regular Asset Behavior
+
+The bot treats two asset groups differently:
+
+- `major assets`: `BTC`, `ETH`, `SOL`
+- `regular tokens`: everything else
+
+For major assets:
+
+- execution is routed through canonical X Layer representations
+- the system does not require the same deep token-risk scan as smaller tokens
+- the decision is driven more by TA, market structure, and user policy
+
+For regular tokens:
+
+- token resolution must be explicit enough
+- security and advanced token-risk context matter much more
+- liquidity, price impact, and quality filters are stricter
+
+This split keeps the bot fast on obvious major-asset calls while being more defensive on smaller, riskier tokens.
+
+### Degen / Normal / Safe
+
+The user selects a global trading style through `/trade-style`.
+That style becomes part of the persistent strategy profile used in every future decision.
+
+#### `degen`
+
+- larger sizing allowed
+- looser slippage and deviation tolerance
+- looser regular-token thresholds
+- still bounded by hard system caps and hard risk blocks
+
+#### `normal`
+
+- balanced sizing
+- balanced slippage and deviation thresholds
+- balanced regular-token filters
+
+#### `safe`
+
+- smaller sizing
+- tighter slippage and price-deviation gates
+- stricter liquidity requirements
+- more conservative behavior on regular tokens
+
+In practice:
+
+- `degen` prioritizes responsiveness
+- `normal` balances opportunity and protection
+- `safe` prioritizes capital preservation
+
+### Protection Mechanisms
+
+The main hard protections are:
+
+- unresolved or ambiguous token identity -> block
+- missing wallet readiness -> block
+- insufficient or stale market context -> block
+- excessive quote price impact -> skip or block
+- excessive price deviation from the reference call -> skip or block
+- insufficient liquidity for regular tokens -> block
+- too many active positions -> block
+- security scan concerns on regular tokens -> block
+- strategy amount caps and lane enablement rules -> enforced deterministically
+
+End result:
+
+- fast enough to avoid missing strong calls
+- selective enough to filter weak, late, ambiguous, or risky calls before they become real losses
+
 ## Working Mechanics
 
 ### Entry Pipeline
