@@ -52,6 +52,9 @@ Cross-chain swap is intentionally out of scope in this version.
 ## Onchain Identity and Deployment Address
 
 This project uses an **OKX Agentic Wallet** as its on-chain identity.
+The system is implemented as a **sub-agent network**, not as multiple independently deployed on-chain agents.
+All sub-agents share and manage the same on-chain identity boundary through this single Agentic Wallet.
+
 For the current deployed operator wallet, the on-chain identities are:
 
 - EVM Address: `0x3c6f840251b0aec91804e39d41acaada76ddfd14`
@@ -95,9 +98,9 @@ The implementation uses:
 - `python-telegram-bot` for polling bot UX
 - `Telethon` in the scraper service for public channel ingestion
 
-## Agent Network
+## Sub-Agent Network
 
-The main agent roles are shown below:
+The main sub-agent roles are shown below:
 
 ```mermaid
 flowchart LR
@@ -109,14 +112,14 @@ flowchart LR
     DECISION -->|"decision"| EXECUTION["Execution Agent"]
 ```
 
-### 1. KOL Call Parsing Agent
+### 1. KOL Call Parsing Sub-Agent
 
 - Reads raw Telegram text, and optional image attachments if present
 - Classifies `trade_call`, `trade_update`, `exit_signal`, or `noise`
 - Extracts symbol, contract clues, chain hints, and entry references
 - Uses model reasoning because KOL language is noisy and inconsistent
 
-### 2. On-chain Data Enrichment Agent
+### 2. On-chain Data Enrichment Sub-Agent
 
 - Loads wallet, market, token, and risk context
 - Resolves the active Agentic Wallet address for the relevant chain
@@ -129,39 +132,39 @@ flowchart LR
 - Computes TA and trigger inputs from fetched K-line windows
 - Kept outside the model so scoring stays auditable and reproducible
 
-### 4. Decision Agent
+### 4. Decision Sub-Agent
 
 - Reasons over already-collected data
 - Decides `execute`, `skip`, or `block`
 - Does not call execution directly
 - Produces structured explainability artifacts for Telegram updates
 
-### 5. Execution Agent
+### 5. Execution Sub-Agent
 
 - Only runs after deterministic policy approval
 - Builds the swap execution request
 - Uses bounded mutating OKX execution tools
 - Returns execution receipts and route summaries
 
-### 6. Portfolio Tracker Agent
+### 6. Portfolio Tracker Sub-Agent
 
 - Refreshes position and wallet PnL context
 - Supports `/portfolio`
 - Feeds the exit workflow with live market and PnL state
 
-### 7. Exit Agent
+### 7. Exit Sub-Agent
 
 - Evaluates hold / hard-exit / trailing behavior on open positions
 - Runs inside a separate LangGraph exit pipeline
 - Leaves the final execution authorization to deterministic exit policy nodes
 
-### 8. Wallet Agent
+### 8. Wallet Sub-Agent
 
 - Owns Agentic Wallet onboarding and `/status`
 - Handles email login, OTP verification, wallet status, and address retrieval
 - Makes the bot's on-chain execution identity explicit
 
-### 9. History Agent
+### 9. History Sub-Agent
 
 - Supports `/history`
 - Loads DEX history for the operator wallet from OKX market capabilities

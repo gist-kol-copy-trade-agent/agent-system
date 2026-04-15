@@ -1,8 +1,8 @@
-# Core Agent Architecture
+# Core Sub-Agent Architecture
 
 ## 1. Design Goals
 
-The core agent must:
+The core sub-agent system must:
 
 - reason well enough to parse noisy Telegram KOL calls,
 - use tools selectively and with bounded context,
@@ -23,10 +23,16 @@ Based on the LangChain docs:
 
 For this product, the recommended architecture is:
 
-- LangChain agent(s) for bounded reasoning tasks.
+- LangChain sub-agents for bounded reasoning tasks.
 - LangGraph state graph for orchestration and failure recovery.
 - OKX OnchainOS skills loaded by the agent as prompt specializations.
 - Application services mainly for skill loading, deterministic execution control, TA calculation, Telegram IO, and persistence.
+
+Identity model note:
+
+- these are not independently deployed on-chain agents,
+- they are bounded sub-agents inside one orchestrated runtime,
+- they share a single Agentic Wallet identity boundary for execution.
 
 Current MVP note:
 
@@ -64,49 +70,49 @@ User Command Router
       -> Portfolio / History / Follow / Stop / Status
 ```
 
-## 4. Recommended Agent Partitioning
+## 4. Recommended Sub-Agent Partitioning
 
 Do not use one monolithic agent for all responsibilities.
 
-Use three bounded agent roles:
+Use bounded sub-agent roles:
 
-### 4.1 Parsing Agent
+### 4.1 Parsing Sub-Agent
 Purpose:
 
 - classify Telegram message type,
 - extract structured trade intent,
 - normalize ambiguous language into a fixed schema.
 
-The parsing agent should not execute trades.
+The parsing sub-agent should not execute trades.
 
-### 4.2 Decision Agent
+### 4.2 Decision Sub-Agent
 Purpose:
 
 - synthesize parsed signal, market data, security data, wallet state, and TA outputs,
 - produce a structured trade decision recommendation,
 - explain why a trade should be executed, skipped, or blocked.
 
-The decision agent should not directly call raw execution tools.
+The decision sub-agent should not directly call raw execution tools.
 
-### 4.3 Exit Agent
+### 4.3 Exit Sub-Agent
 Purpose:
 
 - interpret active position state, market conditions, and user settings,
 - recommend whether an active position should be held, hard-exited, or managed via trailing logic,
 - output a structured exit decision.
 
-The exit agent should not directly mutate portfolio state.
+The exit sub-agent should not directly mutate portfolio state.
 
-### 4.4 Wallet, Portfolio, and History Command Agents
+### 4.4 Wallet, Portfolio, and History Command Sub-Agents
 Purpose:
 
 - `WalletAgent` handles `/start` and `/status` with `okx-agentic-wallet`,
 - `PositionTrackerAgent` handles `/portfolio` with `okx-dex-market`,
 - `HistoryAgent` handles `/history` with `okx-dex-market`.
 
-These agents should not directly execute unrestricted trade side effects.
+These sub-agents should not directly execute unrestricted trade side effects.
 
-### 4.5 Swap Execution Agent
+### 4.5 Swap Execution Sub-Agent
 Purpose:
 
 - receive already policy-approved buy or sell intent,
@@ -114,7 +120,7 @@ Purpose:
 - synthesize route / execution details,
 - invoke bounded swap execution tools.
 
-This agent must not decide whether execution is allowed.
+This sub-agent must not decide whether execution is allowed.
 That remains outside the agent in deterministic policy-gate nodes.
 
 ## 5. Why Not a Single Always-On General Agent

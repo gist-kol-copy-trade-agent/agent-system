@@ -2,9 +2,9 @@
 
 ## Scope
 
-This folder defines the internal agent architecture for the v1 product:
+This folder defines the internal sub-agent architecture for the v1 product:
 
-- built on LangChain agents,
+- built on LangChain sub-agents,
 - running on LangGraph runtime,
 - using OKX OnchainOS skills through application-owned tool wrappers,
 - optimized for `authorized-auto` execution only.
@@ -12,7 +12,7 @@ This folder defines the internal agent architecture for the v1 product:
 ## Documents
 
 - [design-principles.md](design-principles.md): the architecture north star for dividing responsibilities between LangChain and LangGraph.
-- [core-agent-architecture.md](core-agent-architecture.md): overall agent topology, LangChain/LangGraph design, node boundaries, and tool exposure rules.
+- [core-agent-architecture.md](core-agent-architecture.md): overall sub-agent topology, LangChain/LangGraph design, node boundaries, and tool exposure rules.
 - [agent-boundary-review.md](agent-boundary-review.md): review of the current agent split against LangChain/LangGraph guidance, including which agents should stay separate and which may merge later.
 - [agent-skill-runtime.md](agent-skill-runtime.md): runtime path showing when each agent loads OKX skills, which tools it calls, and where bounded `onchainos` execution happens.
 - [runtime-graph-charts.md](runtime-graph-charts.md): two Mermaid charts for the signal-intake/follow-trade graph and the exit graph, including model nodes, tools, and OKX skills loaded at each step.
