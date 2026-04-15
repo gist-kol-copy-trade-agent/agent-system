@@ -52,15 +52,21 @@ Cross-chain swap is intentionally out of scope in this version.
 ## Onchain Identity and Deployment Address
 
 This project uses an **OKX Agentic Wallet** as its on-chain identity.
-Each deployed bot instance creates and manages its own wallet session during onboarding through `/start`.
+For the current deployed operator wallet, the on-chain identities are:
 
-Important note:
+- EVM Address: `0x3c6f840251b0aec91804e39d41acaada76ddfd14`
+- Solana Address: `wSaoLqur5U8Yfbq74c926i5ATUFQxuzbUxR1dGouxHr`
 
-- the wallet identity is **per deployment / per operator**
-- the repo does **not** hardcode or publish a shared hot-wallet address
-- after the first successful wallet login, the live deployment address can be inspected via `/status`
+This wallet is the execution identity used by the system for live on-chain actions.
 
-This choice is deliberate: the bot is designed to trade from the operator's own Agentic Wallet session, not from a shared project treasury.
+### On-chain Transaction Proofs
+
+- Solana buy `BULL`:
+  - <https://solscan.io/tx/L1pKvjXqJeg8sYYFs4UxzPwBFRyYqNJVg3VPHoLkqM8fBEpt2pcwfyA1bxASC1BUaKYmndUZmvXtq9Y3Sv5pGzB>
+- Solana sell `BULL`:
+  - <https://solscan.io/tx/38PEUPm78WkN9kQtdWwAuc4hmJ77R3YznKegGtdUnGRtYNchKUN9BWP2Gd5pMc52TUSzXB7HeGVsxncXjaJ8nCcr>
+- X Layer buy `xBTC`:
+  - <https://www.oklink.com/xlayer/tx/0xf68c20c21704d6c8254a57a638f4e3e7675da83c9ab766b463e454df086b739b>
 
 ## Architecture Overview
 
